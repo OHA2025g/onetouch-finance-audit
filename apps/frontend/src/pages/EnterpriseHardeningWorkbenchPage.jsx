@@ -8,6 +8,7 @@ import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import { StatCard } from "../components/StatCard";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
+import WaveProgramDeliveryPanel from "../components/WaveProgramDeliveryPanel";
 
 export default function EnterpriseHardeningWorkbenchPage() {
   const { user } = useAuth();
@@ -76,9 +77,11 @@ export default function EnterpriseHardeningWorkbenchPage() {
       <div data-testid="enterprise-hardening-workbench-page" data-enterprise-hardening-phase40-surface="true">
         <PageHeader
           kicker="ENTERPRISE · PHASE 40"
-          title="Health · audit logs · security config"
-          subtitle="Super Admin only — matches L4: public /system/health/live; protected /system/health, /audit-logs, /security-config."
+          title="Wave program · health · audit · security"
+          subtitle="Super Admin only — parallel waves 0–8 (40 modules) plus live L4 surfaces: /system/health/live; /system/health, /audit-logs, /security-config."
         />
+
+        <WaveProgramDeliveryPanel />
 
         <MastersFilterStrip className="mb-6" />
 
