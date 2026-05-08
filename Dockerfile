@@ -1,31 +1,34 @@
-# One Touch Audit — production static bundle
-FROM node:20-alpine AS build
+## One Touch Audit — API container (repo root)
+##
+## This repo already contains per-app Dockerfiles:
+## - apps/backend/Dockerfile
+## - apps/frontend/Dockerfile
+##
+## This root Dockerfile exists so `docker build .` works out of the box
+## (e.g. for platforms that expect a Dockerfile at the repository root).
+##
+## Build:
+##   docker build -t onetouch-audit-ai-api .
+## Run:
+##   docker run --rm -p 8000:8000 -e MONGO_URL="mongodb://host.docker.internal:27017" onetouch-audit-ai-api
+
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install deps (cached when lockfiles unchanged)
-COPY frontend/package.json frontend/yarn.lock ./
-RUN corepack enable && yarn install --frozen-lockfile --network-timeout 600000 --prefer-offline
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
 
-# App sources (respects .dockerignore)
-COPY frontend/ ./
+COPY apps/backend/requirements.txt ./requirements.txt
+RUN pip install --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ -r requirements.txt
 
-ARG REACT_APP_BACKEND_URL=
-ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
-ENV NODE_ENV=production
-ENV CI=false
-ENV GENERATE_SOURCEMAP=false
-ENV NODE_OPTIONS=--max_old_space_size=4096
-RUN yarn build
+COPY apps/backend/ ./
 
-FROM nginx:1.27-alpine
+# Compatibility for integration tests that read /app/frontend/.env inside the api container.
+RUN mkdir -p /app/frontend && printf "REACT_APP_BACKEND_URL=http://127.0.0.1:8000\n" > /app/frontend/.env
 
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/build /usr/share/nginx/html
+EXPOSE 8000
 
-EXPOSE 80
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
 
-HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
-  CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1
-
-CMD ["nginx", "-g", "daemon off;"]

@@ -1,0 +1,28 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data_clean:/data/db
+
+  app:
+    build:
+      context: ../..
+      dockerfile: infra/clean/Dockerfile
+    environment:
+      MONGO_URL: "mongodb://mongo:27017"
+      DB_NAME: "onetouch_audit"
+      CORS_ORIGINS: "*"
+      JWT_SECRET: "onetouch-audit-ai-super-secret-jwt-key-2026"
+      ENABLE_PHASE2: "true"
+      # Optional
+      EMERGENT_LLM_KEY: ""
+    depends_on:
+      - mongo
+    ports:
+      - "5175:5175"
+    restart: unless-stopped
+
+volumes:
+  mongo_data_clean:
+

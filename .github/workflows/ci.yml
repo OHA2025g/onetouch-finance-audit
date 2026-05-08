@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start MongoDB
+        run: docker compose up -d mongo
+      - name: Wait for Mongo
+        run: |
+          for i in $(seq 1 30); do
+            docker compose exec -T mongo mongosh --quiet --eval 'db.adminCommand({ ping: 1 })' && break
+            sleep 2
+          done && sleep 2
+      - name: Build API image
+        run: docker compose build api
+      - name: Start API
+        run: docker compose up -d api
+      - name: Wait for API
+        run: |
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8000/api/ && exit 0
+            sleep 2
+          done
+          exit 1
+      - name: compileall
+        run: docker compose exec -T api python -m compileall -q /app/app
+      - name: pytest
+        run: docker compose exec -T api pytest /app/tests -q
+      - name: OpenAPI schema
+        run: docker compose exec -T api python /app/scripts/export_openapi.py > openapi.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openapi-schema
+          path: openapi.json
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/frontend/.nvmrc
+          cache: yarn
+          cache-dependency-path: apps/frontend/yarn.lock
+      - name: Install & build
+        working-directory: apps/frontend
+        run: |
+          yarn install --frozen-lockfile
+          yarn build
+
+  e2e-cfo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/frontend/.nvmrc
+          cache: yarn
+          cache-dependency-path: apps/frontend/yarn.lock
+      - name: Install frontend deps & Playwright browser
+        working-directory: apps/frontend
+        run: |
+          yarn install --frozen-lockfile
+          npx playwright install chromium --with-deps
+      - name: Build & start Docker stack (web + api + mongo)
+        run: docker compose up -d --build
+      - name: Wait for UI and proxied API
+        run: |
+          for i in $(seq 1 90); do
+            curl -sf http://127.0.0.1:5175/ >/dev/null || { sleep 2; continue; }
+            curl -sf http://127.0.0.1:5175/api/system/health/live >/dev/null || { sleep 2; continue; }
+            exit 0
+          done
+          echo "Stack did not become ready in time"; docker compose ps; docker compose logs --tail 80 api web || true
+          exit 1
+      - name: CFO / finance ops / WC / Treasury / GL / JE / recon / bank / inventory / PV / FA · CAPEX / debt / FX / RPT / legal / DOA / policy / access / MDQ / evidence intelligence · CA rules / risk scoring / Copilot 2.0 / integration hub / board report automation / enterprise hardening / vendor / TWM / O2C / credit surfaces (PR-43–PR-80)
+        working-directory: apps/frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:5175
+        run: |
+          yarn e2e \
+            tests/e2e/cfo_command_center.spec.js \
+            tests/e2e/cfo_command_center_hub.spec.js \
+            tests/e2e/cfo_kpi_drilldown.spec.js \
+            tests/e2e/cfo_action_queue.spec.js \
+            tests/e2e/month_end_close.spec.js \
+            tests/e2e/finance_team_performance.spec.js \
+            tests/e2e/budget_master_phase12.spec.js \
+            tests/e2e/budget_vs_actual_phase13.spec.js \
+            tests/e2e/forecast_accuracy_phase14.spec.js \
+            tests/e2e/gl_audit_phase15.spec.js \
+            tests/e2e/journal_risk_phase16.spec.js \
+            tests/e2e/reconciliations_phase17.spec.js \
+            tests/e2e/bank_recon_phase18.spec.js \
+            tests/e2e/inventory_audit_phase23.spec.js \
+            tests/e2e/physical_verification_phase24.spec.js \
+            tests/e2e/fixed_assets_capex_phase25.spec.js \
+            tests/e2e/vendor_risk_phase19.spec.js \
+            tests/e2e/three_way_match_phase20.spec.js \
+            tests/e2e/o2c_audit_phase21.spec.js \
+            tests/e2e/credit_notes_phase22.spec.js \
+            tests/e2e/working_capital.spec.js \
+            tests/e2e/receivables_ar_phase9.spec.js \
+            tests/e2e/payables_ap_phase10.spec.js \
+            tests/e2e/cash_forecast_phase11.spec.js \
+            tests/e2e/treasury_debt_investments_phase26.spec.js \
+            tests/e2e/forex_exposure_phase27.spec.js \
+            tests/e2e/rpt_phase28.spec.js \
+            tests/e2e/legal_notices_phase29.spec.js \
+            tests/e2e/doa_phase30.spec.js \
+            tests/e2e/policy_compliance_phase31.spec.js \
+            tests/e2e/access_sod_phase32.spec.js \
+            tests/e2e/master_data_quality_phase33.spec.js \
+            tests/e2e/evidence_intelligence_phase34.spec.js \
+            tests/e2e/continuous_audit_phase35.spec.js \
+            tests/e2e/risk_scoring_phase36.spec.js \
+            tests/e2e/copilot2_phase37.spec.js \
+            tests/e2e/integration_hub_phase38.spec.js \
+            tests/e2e/board_reporting_phase39.spec.js \
+            tests/e2e/enterprise_hardening_phase40.spec.js
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-cfo-results
+          path: |
+            apps/frontend/playwright-report
+            apps/frontend/test-results

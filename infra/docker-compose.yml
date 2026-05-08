@@ -1,0 +1,49 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/backend/Dockerfile
+    environment:
+      MONGO_URL: "mongodb://mongo:27017"
+      DB_NAME: "onetouch_audit"
+      CORS_ORIGINS: "*"
+      JWT_SECRET: "onetouch-audit-ai-super-secret-jwt-key-2026"
+      ENABLE_PHASE2: "true"
+      # Optional: if not set, AI features degrade gracefully where implemented.
+      EMERGENT_LLM_KEY: ""
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    expose:
+      - "8000"
+
+  web:
+    build:
+      context: ../apps/frontend
+      dockerfile: Dockerfile
+      args:
+        # Use nginx reverse proxy for /api in Docker so login works locally.
+        REACT_APP_BACKEND_URL: ""
+    ports:
+      - "5175:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
