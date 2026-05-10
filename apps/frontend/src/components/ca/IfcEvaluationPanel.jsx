@@ -10,6 +10,8 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { useAuth } from "../../lib/auth";
+import { controlLibraryItemsFromResponse } from "../../lib/controlLibraryResponse";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 
 const VIEWS = [
   { id: "dashboard", label: "Dashboard" },
@@ -32,6 +34,7 @@ function cellColor(n, max) {
 export default function IfcEvaluationPanel({ engagementId, compact = false }) {
   const eid = engagementId;
   const { user } = useAuth();
+  const dashboardParams = useDashboardFilterParams();
   const [view, setView] = useState("dashboard");
   const [dash, setDash] = useState(null);
   const [library, setLibrary] = useState([]);
@@ -46,31 +49,31 @@ export default function IfcEvaluationPanel({ engagementId, compact = false }) {
   const loadDash = useCallback(async () => {
     if (!eid) return;
     try {
-      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/ifc-dashboard`);
+      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/ifc-dashboard`, { params: dashboardParams });
       setDash(data);
     } catch {
       setDash(null);
     }
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   const loadLibrary = useCallback(async () => {
     try {
-      const { data } = await http.get("/control-library");
-      setLibrary(Array.isArray(data) ? data : []);
+      const { data } = await http.get("/control-library", { params: dashboardParams });
+      setLibrary(controlLibraryItemsFromResponse(data));
     } catch {
       setLibrary([]);
     }
-  }, []);
+  }, [dashboardParams]);
 
   const loadHeatmap = useCallback(async () => {
     if (!eid) return;
     try {
-      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/ifc-heatmap`);
+      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/ifc-heatmap`, { params: dashboardParams });
       setHeatmap(data);
     } catch {
       setHeatmap(null);
     }
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     loadLibrary();
@@ -98,7 +101,7 @@ export default function IfcEvaluationPanel({ engagementId, compact = false }) {
         effectiveness_score === "pending"
           ? { result: "pending", evidence_refs: [] }
           : { effectiveness_score, evidence_refs: [] };
-      await http.put(`/control-tests/${encodeURIComponent(testId)}/result`, body);
+      await http.put(`/control-tests/${encodeURIComponent(testId)}/result`, body, { params: dashboardParams });
       toast.success("Test result saved");
       await loadDash();
       await loadHeatmap();
@@ -114,12 +117,16 @@ export default function IfcEvaluationPanel({ engagementId, compact = false }) {
       return;
     }
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/control-tests`, {
-        control_library_id: newTest.control_library_id.trim(),
-        test_type: newTest.test_type,
-        period: newTest.period.trim(),
-        tester_email: newTest.tester_email.trim(),
-      });
+      await http.post(
+        `/audit-engagements/${encodeURIComponent(eid)}/control-tests`,
+        {
+          control_library_id: newTest.control_library_id.trim(),
+          test_type: newTest.test_type,
+          period: newTest.period.trim(),
+          tester_email: newTest.tester_email.trim(),
+        },
+        { params: dashboardParams },
+      );
       toast.success("Control test created");
       setNewTest((s) => ({ ...s, control_library_id: "" }));
       await loadDash();
@@ -136,14 +143,18 @@ export default function IfcEvaluationPanel({ engagementId, compact = false }) {
       return;
     }
     try {
-      await http.post("/control-deficiencies", {
-        engagement_id: eid,
-        control_test_id: defForm.control_test_id.trim(),
-        description: defForm.description.trim(),
-        severity: defForm.severity,
-        create_case: true,
-        status: "open",
-      });
+      await http.post(
+        "/control-deficiencies",
+        {
+          engagement_id: eid,
+          control_test_id: defForm.control_test_id.trim(),
+          description: defForm.description.trim(),
+          severity: defForm.severity,
+          create_case: true,
+          status: "open",
+        },
+        { params: dashboardParams },
+      );
       toast.success("Deficiency logged (case created)");
       setDefForm({ control_test_id: "", description: "", severity: "medium" });
       await loadDash();
@@ -156,10 +167,14 @@ export default function IfcEvaluationPanel({ engagementId, compact = false }) {
     ev.preventDefault();
     if (!mgmt.deficiencyId.trim() || !mgmt.text.trim()) return;
     try {
-      await http.post(`/control-deficiencies/${encodeURIComponent(mgmt.deficiencyId.trim())}/management-response`, {
-        response_text: mgmt.text.trim(),
-        owner_email: mgmt.owner.trim() || user?.email,
-      });
+      await http.post(
+        `/control-deficiencies/${encodeURIComponent(mgmt.deficiencyId.trim())}/management-response`,
+        {
+          response_text: mgmt.text.trim(),
+          owner_email: mgmt.owner.trim() || user?.email,
+        },
+        { params: dashboardParams },
+      );
       toast.success("Management response saved");
       setMgmt({ deficiencyId: "", text: "", owner: "" });
       await loadDash();
@@ -170,7 +185,11 @@ export default function IfcEvaluationPanel({ engagementId, compact = false }) {
 
   const closeDef = async (id) => {
     try {
-      await http.put(`/control-deficiencies/${encodeURIComponent(id)}`, { status: "closed", closure_notes: "Closed in IFC register" });
+      await http.put(
+        `/control-deficiencies/${encodeURIComponent(id)}`,
+        { status: "closed", closure_notes: "Closed in IFC register" },
+        { params: dashboardParams },
+      );
       toast.success("Marked closed");
       await loadDash();
     } catch {
@@ -181,13 +200,17 @@ export default function IfcEvaluationPanel({ engagementId, compact = false }) {
   const submitCert = async (ev) => {
     ev.preventDefault();
     try {
-      await http.post("/control-certifications", {
-        engagement_id: eid,
-        owner_email: user?.email,
-        certification_text: cert.text.trim(),
-        scope: cert.scope.trim(),
-        control_library_id: cert.control_library_id.trim() || null,
-      });
+      await http.post(
+        "/control-certifications",
+        {
+          engagement_id: eid,
+          owner_email: user?.email,
+          certification_text: cert.text.trim(),
+          scope: cert.scope.trim(),
+          control_library_id: cert.control_library_id.trim() || null,
+        },
+        { params: dashboardParams },
+      );
       toast.success("Certification recorded");
       setCert({ scope: "IFC cycle FY", text: "", control_library_id: "" });
       await loadDash();
@@ -203,7 +226,7 @@ export default function IfcEvaluationPanel({ engagementId, compact = false }) {
       return;
     }
     try {
-      await http.post("/control-library", { ...newLib, objectives: [], activities: [], owners: [] });
+      await http.post("/control-library", { ...newLib, objectives: [], activities: [], owners: [] }, { params: dashboardParams });
       toast.success("Control added");
       setNewLib({ code: "", name: "", control_type: "preventive", process: "", description: "" });
       await loadLibrary();

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/journals", tags=["journals"])
@@ -117,6 +118,7 @@ async def journals_list(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code
@@ -160,12 +162,19 @@ async def journal_detail(je_id: str, current=Depends(get_current_user)):
     doc = await db.journals.find_one({"id": je_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Journal entry not found")
+    if doc.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=doc.get("entity"))
     rules = await _get_rules()
     return {**doc, **_score_je(doc, rules), "as_of": as_of_now()}
 
 
 @router.post("/{je_id}/review")
 async def journal_review(je_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    je = await db.journals.find_one({"id": je_id}, {"_id": 0, "entity": 1})
+    if not je:
+        raise HTTPException(404, "Journal entry not found")
+    if je.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=je.get("entity"))
     # Persist review decision separately (journals are seed-like immutable docs).
     decision = str(body.get("decision") or "reviewed")
     note = body.get("note")
@@ -183,6 +192,8 @@ async def journal_sample(body: Dict[str, Any], current=Depends(get_current_user)
     """
     n = int(body.get("n") or 20)
     entity_code = body.get("entity_code")
+    if entity_code and str(entity_code).strip():
+        entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=str(entity_code))
     risk_band = body.get("risk_band")
     data = await journals_list(entity_code=entity_code, is_manual=None, limit=500, offset=0, current=current)
     items = data["items"]

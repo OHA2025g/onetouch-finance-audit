@@ -82,8 +82,14 @@ import ModuleHubPage from "./pages/ModuleHubPage";
 import RiskIntelligencePage from "./pages/RiskIntelligencePage";
 import MonthEndClosePage from "./pages/MonthEndClosePage";
 import WorkingCapitalPage from "./pages/WorkingCapitalPage";
+import ReceivablesArAgeingPage from "./pages/ReceivablesArAgeingPage";
+import PayablesApAgeingPage from "./pages/PayablesApAgeingPage";
 import TreasuryPage from "./pages/TreasuryPage";
+import CashForecast13WeekPage from "./pages/CashForecast13WeekPage";
 import FpaPage from "./pages/FpaPage";
+import BudgetMasterPage from "./pages/BudgetMasterPage";
+import BudgetVsActualPage from "./pages/BudgetVsActualPage";
+import ForecastAccuracyPage from "./pages/ForecastAccuracyPage";
 import FinanceTeamPerformancePage from "./pages/FinanceTeamPerformancePage";
 import GlAuditWorkbenchPage from "./pages/GlAuditWorkbenchPage";
 import JournalRiskWorkbenchPage from "./pages/JournalRiskWorkbenchPage";
@@ -191,12 +197,12 @@ export default function App() {
               <Route path="working-capital" element={<WorkingCapitalPage />} />
               <Route path="working-capital/cash-conversion" element={<CashConversionPage />} />
               {/* Roadmap aliases (Phase 9-14) — thin wrappers until dedicated pages ship */}
-              <Route path="working-capital/receivables" element={<WorkingCapitalPage />} />
-              <Route path="working-capital/payables" element={<WorkingCapitalPage />} />
+              <Route path="working-capital/receivables" element={<ReceivablesArAgeingPage />} />
+              <Route path="working-capital/payables" element={<PayablesApAgeingPage />} />
               <Route path="treasury" element={<TreasuryPage />} />
               {/* Roadmap aliases (Phase 11/26/27) */}
               <Route path="treasury/dashboard" element={<TreasuryPage />} />
-              <Route path="treasury/cash-forecast" element={<TreasuryPage />} />
+              <Route path="treasury/cash-forecast" element={<CashForecast13WeekPage />} />
               <Route path="treasury/forex-exposure" element={<TreasuryPage />} />
               <Route path="treasury/forex-exposure-dashboard" element={<ForexExposureWorkbenchPage />} />
               <Route path="treasury/debt-investments-dashboard" element={<TreasuryDebtInvestmentsWorkbenchPage />} />
@@ -205,14 +211,14 @@ export default function App() {
               <Route path="finance-operations/month-end-close" element={<MonthEndClosePage />} />
               <Route path="finance-operations/month-end-close/:cycleId" element={<MonthEndClosePage />} />
               <Route path="finance-operations/fpa" element={<FpaPage />} />
-              <Route path="finance-operations/budget-master" element={<FpaPage />} />
-              <Route path="finance-operations/budget-vs-actual-dashboard" element={<FpaPage />} />
-              <Route path="finance-operations/forecast-accuracy-dashboard" element={<FpaPage />} />
+              <Route path="finance-operations/budget-master" element={<BudgetMasterPage />} />
+              <Route path="finance-operations/budget-vs-actual-dashboard" element={<BudgetVsActualPage />} />
+              <Route path="finance-operations/forecast-accuracy-dashboard" element={<ForecastAccuracyPage />} />
               <Route path="finance-operations/team-performance" element={<FinanceTeamPerformancePage />} />
               {/* Roadmap aliases (Phase 12-14) */}
-              <Route path="finance-operations/budget" element={<ModuleHubPage hubKey="finance-operations" />} />
-              <Route path="finance-operations/budget-vs-actual" element={<ModuleHubPage hubKey="finance-operations" />} />
-              <Route path="finance-operations/forecast-accuracy" element={<ModuleHubPage hubKey="finance-operations" />} />
+              <Route path="finance-operations/budget" element={<BudgetMasterPage />} />
+              <Route path="finance-operations/budget-vs-actual" element={<BudgetVsActualPage />} />
+              <Route path="finance-operations/forecast-accuracy" element={<ForecastAccuracyPage />} />
               <Route path="evidence-cases" element={<ModuleHubPage hubKey="evidence-cases" />} />
               <Route path="board-reporting/report-automation-dashboard" element={<BoardReportingWorkbenchPage />} />
               <Route path="board-reporting" element={<ModuleHubPage hubKey="board-reporting" />} />
@@ -232,8 +238,8 @@ export default function App() {
               <Route path="compliance/rpt-dashboard" element={<RelatedPartyWorkbenchPage />} />
               <Route path="compliance/legal-dashboard" element={<LegalNoticesLitigationWorkbenchPage />} />
               {/* Roadmap aliases (Phase 28/29) */}
-              <Route path="compliance/related-party-transactions" element={<ComplianceDashboard />} />
-              <Route path="compliance/notices-litigation" element={<ComplianceDashboard />} />
+              <Route path="compliance/related-party-transactions" element={<RelatedPartyWorkbenchPage />} />
+              <Route path="compliance/notices-litigation" element={<LegalNoticesLitigationWorkbenchPage />} />
               <Route path="my-cases" element={<MyCases />} />
               <Route path="cases" element={<CasesList />} />
               <Route path="cases/:caseId" element={<CaseDetail />} />
@@ -326,8 +332,8 @@ export default function App() {
               <Route path="continuous-audit/three-way-match" element={<ModuleHubPage hubKey="continuous-audit" />} />
               <Route path="continuous-audit/o2c-audit-dashboard" element={<O2cAuditWorkbenchPage />} />
               <Route path="continuous-audit/credit-notes-dashboard" element={<CreditNotesWorkbenchPage />} />
-              <Route path="continuous-audit/revenue-audit" element={<ModuleHubPage hubKey="continuous-audit" />} />
-              <Route path="continuous-audit/credit-note-analytics" element={<ModuleHubPage hubKey="continuous-audit" />} />
+              <Route path="continuous-audit/revenue-audit" element={<O2cAuditWorkbenchPage />} />
+              <Route path="continuous-audit/credit-note-analytics" element={<CreditNotesWorkbenchPage />} />
               <Route path="continuous-audit/rules-engine-dashboard" element={<ContinuousAuditRulesWorkbenchPage />} />
               <Route path="continuous-audit/rules-engine" element={<ModuleHubPage hubKey="continuous-audit" />} />
 

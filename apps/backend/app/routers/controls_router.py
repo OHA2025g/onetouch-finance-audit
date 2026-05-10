@@ -3,8 +3,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_user
-from app.core.entity_scope import resolve_entity_code_for_query
 from app.deps import db, audit_log
+from app.services.rbac_service import enforce_entity_scope
 from app.models import ControlOut, ExceptionOut
 from app.controls_engine import run_control, run_all_controls
 from app.analytics import _scope_exceptions
@@ -46,11 +46,18 @@ def _exceptions_list_query(
 
 
 @router.get("/controls", response_model=List[ControlOut])
-async def controls_list(process: Optional[str] = None, criticality: Optional[str] = None,
-                        current=Depends(get_current_user)):
+async def controls_list(
+    process: Optional[str] = None,
+    criticality: Optional[str] = None,
+    entity_code: Optional[str] = Query(None, description="Optional legal-entity scope (Phase 40 RBAC)"),
+    current=Depends(get_current_user),
+):
+    await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
-    if process: q["process"] = process
-    if criticality: q["criticality"] = criticality
+    if process:
+        q["process"] = process
+    if criticality:
+        q["criticality"] = criticality
     return [c async for c in db.controls.find(q, {"_id": 0}).sort("code", 1)]
 
 
@@ -66,6 +73,7 @@ async def control_detail(
     c = await db.controls.find_one({"id": control_id}, {"_id": 0})
     if not c:
         raise HTTPException(404, "Control not found")
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     runs = [r async for r in db.test_runs.find({"control_id": control_id}, {"_id": 0}).sort("run_ts", -1).limit(20)]
     ex_q = _scope_exceptions(
         {"control_id": control_id, "status": {"$ne": "closed"}},
@@ -121,7 +129,7 @@ async def exceptions_list(
     limit: int = Query(200, ge=1, le=1000),
     current=Depends(get_current_user),
 ):
-    ent_resolved = await resolve_entity_code_for_query(db, current, entity or entity_code)
+    ent_resolved = await enforce_entity_scope(db, current=current, requested_entity_code=(entity or entity_code))
     ex_q = _exceptions_list_query(
         severity=severity,
         status=status,
@@ -153,7 +161,7 @@ async def exceptions_count(
     current=Depends(get_current_user),
 ):
     """Same filters as ``GET /exceptions``; returns total row count for pagination UIs (Phase 6)."""
-    ent_resolved = await resolve_entity_code_for_query(db, current, entity or entity_code)
+    ent_resolved = await enforce_entity_scope(db, current=current, requested_entity_code=(entity or entity_code))
     ex_q = _exceptions_list_query(
         severity=severity,
         status=status,
@@ -174,5 +182,7 @@ async def exception_detail(exception_id: str, current=Depends(get_current_user))
     e = await db.exceptions.find_one({"id": exception_id}, {"_id": 0})
     if not e:
         raise HTTPException(404, "Exception not found")
+    if e.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=e.get("entity"))
     case = await db.cases.find_one({"exception_id": exception_id}, {"_id": 0})
     return {"exception": e, "case": case}

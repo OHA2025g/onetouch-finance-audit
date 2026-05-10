@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { SectionCard } from "../components/PageShell";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { useAuth } from "../lib/auth";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 const TICKS = [
   "agreed to invoice",
@@ -31,12 +32,13 @@ export default function WorkingPaperDetailPage() {
   const [note, setNote] = useState("");
   const [noteType, setNoteType] = useState("review");
   const { user } = useAuth();
+  const dashboardParams = useDashboardFilterParams();
 
   useEffect(() => {
     if (!pid) return;
     (async () => {
       try {
-        const { data } = await http.get(`/working-papers/${encodeURIComponent(pid)}`);
+        const { data } = await http.get(`/working-papers/${encodeURIComponent(pid)}`, { params: dashboardParams });
         setWp(data);
         setTitle(data.title || "");
         setBody(data.body || "");
@@ -46,7 +48,7 @@ export default function WorkingPaperDetailPage() {
         toast.error("Working paper not found");
       }
     })();
-  }, [pid]);
+  }, [pid, dashboardParams]);
 
   const saveWp = async () => {
     const refLines = refsText.split("\n").map((s) => s.trim()).filter(Boolean);
@@ -55,11 +57,15 @@ export default function WorkingPaperDetailPage() {
       return { ref_code: code?.trim() || line, description: rest.join(" — ").trim() || null };
     });
     try {
-      const { data } = await http.put(`/working-papers/${encodeURIComponent(pid)}`, {
-        title: title.trim(),
-        body: body.trim() || null,
-        references,
-      });
+      const { data } = await http.put(
+        `/working-papers/${encodeURIComponent(pid)}`,
+        {
+          title: title.trim(),
+          body: body.trim() || null,
+          references,
+        },
+        { params: dashboardParams },
+      );
       setWp((prev) => (prev ? { ...prev, ...data } : data));
       toast.success("Saved");
     } catch {
@@ -74,14 +80,18 @@ export default function WorkingPaperDetailPage() {
       return;
     }
     try {
-      await http.post(`/working-papers/${encodeURIComponent(pid)}/evidence`, {
-        label: evLabel.trim(),
-        reference: evRef.trim(),
-        ref_type: evType,
-      });
+      await http.post(
+        `/working-papers/${encodeURIComponent(pid)}/evidence`,
+        {
+          label: evLabel.trim(),
+          reference: evRef.trim(),
+          ref_type: evType,
+        },
+        { params: dashboardParams },
+      );
       setEvLabel("");
       setEvRef("");
-      const { data } = await http.get(`/working-papers/${encodeURIComponent(pid)}`);
+      const { data } = await http.get(`/working-papers/${encodeURIComponent(pid)}`, { params: dashboardParams });
       setWp(data);
       toast.success("Evidence attached");
     } catch {
@@ -96,13 +106,17 @@ export default function WorkingPaperDetailPage() {
       return;
     }
     try {
-      await http.post(`/working-papers/${encodeURIComponent(pid)}/review-notes`, {
-        note: note.trim(),
-        author_email: user.email,
-        note_type: noteType,
-      });
+      await http.post(
+        `/working-papers/${encodeURIComponent(pid)}/review-notes`,
+        {
+          note: note.trim(),
+          author_email: user.email,
+          note_type: noteType,
+        },
+        { params: dashboardParams },
+      );
       setNote("");
-      const { data } = await http.get(`/working-papers/${encodeURIComponent(pid)}`);
+      const { data } = await http.get(`/working-papers/${encodeURIComponent(pid)}`, { params: dashboardParams });
       setWp(data);
       toast.success("Review note added");
     } catch {
@@ -116,12 +130,16 @@ export default function WorkingPaperDetailPage() {
       return;
     }
     try {
-      const { data } = await http.post(`/working-papers/${encodeURIComponent(pid)}/sign-off`, {
-        role,
-        signer_email: user.email,
-      });
+      const { data } = await http.post(
+        `/working-papers/${encodeURIComponent(pid)}/sign-off`,
+        {
+          role,
+          signer_email: user.email,
+        },
+        { params: dashboardParams },
+      );
       setWp((prev) => (prev ? { ...prev, ...data } : data));
-      const { data: full } = await http.get(`/working-papers/${encodeURIComponent(pid)}`);
+      const { data: full } = await http.get(`/working-papers/${encodeURIComponent(pid)}`, { params: dashboardParams });
       setWp(full);
       toast.success("Sign-off recorded");
     } catch {

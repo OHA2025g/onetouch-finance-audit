@@ -188,6 +188,10 @@ class AuditEngagementPlanningMetrics(BaseModel):
 class AuditEngagementCreate(BaseModel):
     engagement_id: str = Field(..., description="Unique business key e.g. ENG-2025-IN-001")
     entity_name: str
+    entity_code: Optional[str] = Field(
+        default=None,
+        description="Legal entity code (e.g. US-HQ); used for RBAC when entity scope is enforced.",
+    )
     financial_year: str
     audit_type: AuditType
     audit_scope: str
@@ -213,6 +217,7 @@ class AuditEngagementCreate(BaseModel):
 
 class AuditEngagementUpdate(BaseModel):
     entity_name: Optional[str] = None
+    entity_code: Optional[str] = None
     financial_year: Optional[str] = None
     audit_type: Optional[AuditType] = None
     audit_scope: Optional[str] = None

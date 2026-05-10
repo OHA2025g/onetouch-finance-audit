@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/o2c", tags=["o2c"])
@@ -26,6 +27,7 @@ def _parse_dt(s: Any) -> Optional[datetime]:
 
 @router.get("/summary")
 async def o2c_summary(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     cust_q: Dict[str, Any] = {}
     if entity_code:
         cust_q["entity"] = entity_code
@@ -59,6 +61,7 @@ async def o2c_customers(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     filt: Dict[str, Any] = {}
     if entity_code:
         filt["entity"] = entity_code
@@ -78,6 +81,8 @@ async def o2c_customer_detail(customer_id: str, current=Depends(get_current_user
         c = await db.customers.find_one({"customer_code": customer_id}, {"_id": 0})
     if not c:
         return {"id": customer_id, "found": False, "as_of": as_of_now()}
+    if c.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=c.get("entity"))
     open_amt = 0.0
     async for inv in db.ar_invoices.find({"customer_id": c["id"], "status": "open"}, {"_id": 0, "amount": 1}):
         open_amt += float(inv.get("amount") or 0.0)
@@ -86,6 +91,7 @@ async def o2c_customer_detail(customer_id: str, current=Depends(get_current_user
 
 @router.get("/revenue-cutoff")
 async def o2c_revenue_cutoff(entity_code: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=500), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code
@@ -105,6 +111,7 @@ async def o2c_revenue_cutoff(entity_code: Optional[str] = Query(None), limit: in
 
 @router.get("/credit-limit-breaches")
 async def o2c_credit_limit_breaches(entity_code: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=500), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     cust_q: Dict[str, Any] = {}
     if entity_code:
         cust_q["entity"] = entity_code
@@ -132,6 +139,7 @@ async def o2c_credit_limit_breaches(entity_code: Optional[str] = Query(None), li
 
 @router.get("/customer-concentration")
 async def o2c_customer_concentration(entity_code: Optional[str] = Query(None), limit: int = Query(10, ge=1, le=50), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {"status": {"$in": ["open", "paid"]}}
     if entity_code:
         q["entity"] = entity_code
@@ -155,6 +163,8 @@ async def o2c_create_case(customer_id: str, body: Dict[str, Any], current=Depend
         c = await db.customers.find_one({"customer_code": customer_id}, {"_id": 0})
     if not c:
         raise HTTPException(404, "Customer not found")
+    if c.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=c.get("entity"))
 
     now = as_of_now()
     cid = f"case-o2c-{__import__('uuid').uuid4().hex[:10]}"

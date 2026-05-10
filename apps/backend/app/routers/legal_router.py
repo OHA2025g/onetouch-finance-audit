@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/legal", tags=["legal"])
@@ -103,6 +104,7 @@ async def _ensure_seed_legal(entity_code: Optional[str] = None) -> Dict[str, int
 
 @router.get("/notices")
 async def legal_notices(entity_code: Optional[str] = Query(None), status: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=5000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_legal(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -118,9 +120,14 @@ async def legal_notices(entity_code: Optional[str] = Query(None), status: Option
 @router.post("/notices")
 async def legal_notice_create(body: Dict[str, Any], current=Depends(get_current_user)):
     nid = f"NTC-{__import__('uuid').uuid4().hex[:10]}"
+    ent = await enforce_entity_scope(
+        db,
+        current=current,
+        requested_entity_code=(body.get("entity") or body.get("entity_code")),
+    )
     doc = {
         "id": nid,
-        "entity": body.get("entity") or "US-HQ",
+        "entity": ent or body.get("entity") or "US-HQ",
         "notice_type": body.get("notice_type") or "GST",
         "authority": body.get("authority") or "Authority",
         "reference_no": body.get("reference_no") or f"REF-{nid}",
@@ -139,6 +146,7 @@ async def legal_notice_create(body: Dict[str, Any], current=Depends(get_current_
 
 @router.get("/litigations")
 async def legal_litigations(entity_code: Optional[str] = Query(None), status: Optional[str] = Query(None), risk_level: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=5000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_legal(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -158,9 +166,14 @@ async def legal_litigation_create(body: Dict[str, Any], current=Depends(get_curr
     lid = f"LIT-{__import__('uuid').uuid4().hex[:10]}"
     disputed = float(body.get("disputed_amount") or 0.0)
     prov = float(body.get("provision_amount") or round(disputed * 0.1, 2))
+    ent = await enforce_entity_scope(
+        db,
+        current=current,
+        requested_entity_code=(body.get("entity") or body.get("entity_code")),
+    )
     doc = {
         "id": lid,
-        "entity": body.get("entity") or "US-HQ",
+        "entity": ent or body.get("entity") or "US-HQ",
         "case_title": body.get("case_title") or "Litigation matter",
         "forum": body.get("forum") or "Tribunal",
         "case_no": body.get("case_no") or f"CASE-{lid}",
@@ -181,6 +194,7 @@ async def legal_litigation_create(body: Dict[str, Any], current=Depends(get_curr
 
 @router.get("/hearings")
 async def legal_hearings(entity_code: Optional[str] = Query(None), litigation_id: Optional[str] = Query(None), from_date: Optional[str] = Query(None), to_date: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=5000), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_legal(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -204,6 +218,11 @@ async def legal_hearings(entity_code: Optional[str] = Query(None), litigation_id
 @router.post("/{case_id}/response")
 async def legal_response(case_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
     """Attach a response note/workflow update to a notice or litigation."""
+    n0 = await db.legal_notices.find_one({"id": case_id}, {"_id": 0, "entity": 1})
+    l0 = await db.legal_litigations.find_one({"id": case_id}, {"_id": 0, "entity": 1}) if not n0 else None
+    ent0 = (n0 or l0 or {}).get("entity")
+    if ent0:
+        await enforce_entity_scope(db, current=current, requested_entity_code=ent0)
     rid = f"resp-{__import__('uuid').uuid4().hex[:10]}"
     item = {"id": rid, "text": body.get("text") or "", "by": current.get("email"), "at": as_of_now(), "meta": body.get("meta") or {}}
     # Try notice first, then litigation
@@ -219,6 +238,11 @@ async def legal_response(case_id: str, body: Dict[str, Any], current=Depends(get
 @router.post("/{case_id}/provision-assessment")
 async def legal_provision_assessment(case_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
     """Record a provision assessment on a litigation or notice."""
+    n0 = await db.legal_notices.find_one({"id": case_id}, {"_id": 0, "entity": 1})
+    l0 = await db.legal_litigations.find_one({"id": case_id}, {"_id": 0, "entity": 1}) if not n0 else None
+    ent0 = (n0 or l0 or {}).get("entity")
+    if ent0:
+        await enforce_entity_scope(db, current=current, requested_entity_code=ent0)
     assessment = {
         "assessed_by": current.get("email"),
         "assessed_at": as_of_now(),
@@ -242,6 +266,7 @@ async def legal_provision_assessment(case_id: str, body: Dict[str, Any], current
 
 @router.get("/exposure-report")
 async def legal_exposure_report(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_legal(entity_code=entity_code)
     q: Dict[str, Any] = {"entity": entity_code} if entity_code else {}
     notices = [n async for n in db.legal_notices.find(q, {"_id": 0}).limit(5000)]

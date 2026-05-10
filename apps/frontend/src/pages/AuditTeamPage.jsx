@@ -2,30 +2,39 @@ import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import AuditTeamCard from "../components/ca/AuditTeamCard";
 
 export default function AuditTeamPage() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const [eng, setEng] = useState(null);
 
   useEffect(() => {
     if (!eid) return;
-    http.get(`/audit-engagements/${encodeURIComponent(eid)}`).then((r) => setEng(r.data)).catch(() => toast.error("Load failed"));
-  }, [eid]);
+    http
+      .get(`/audit-engagements/${encodeURIComponent(eid)}`, { params: dashboardParams })
+      .then((r) => setEng(r.data))
+      .catch(() => toast.error("Load failed"));
+  }, [eid, dashboardParams]);
 
   const addMember = async (ev) => {
     ev.preventDefault();
     const fd = new FormData(ev.target);
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/team`, {
-        user_email: fd.get("email"),
-        role: fd.get("role") || "staff",
-        allocation_pct: parseFloat(fd.get("pct") || "100"),
-      });
-      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}`);
+      await http.post(
+        `/audit-engagements/${encodeURIComponent(eid)}/team`,
+        {
+          user_email: fd.get("email"),
+          role: fd.get("role") || "staff",
+          allocation_pct: parseFloat(fd.get("pct") || "100"),
+        },
+        { params: dashboardParams },
+      );
+      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}`, { params: dashboardParams });
       setEng(data);
       toast.success("Team member added");
       ev.target.reset();

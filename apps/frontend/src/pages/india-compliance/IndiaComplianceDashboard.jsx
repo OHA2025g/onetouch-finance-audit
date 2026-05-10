@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { http, API } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { SectionCard } from "../../components/PageShell";
 import { PenaltyRiskBadge } from "../../components/Badges";
 
 export default function IndiaComplianceDashboard() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const base = `/app/audit-planning/engagements/${encodeURIComponent(eid)}/india-compliance`;
   const [status, setStatus] = useState(null);
@@ -15,15 +17,20 @@ export default function IndiaComplianceDashboard() {
   const [findingForm, setFindingForm] = useState({ law_code: "CA2013", title: "", notes: "" });
 
   const load = useCallback(async () => {
-    const [st, lib, fin] = await Promise.all([
-      http.get(`/audit-engagements/${encodeURIComponent(eid)}/compliance/status`),
-      http.get("/compliance/library"),
-      http.get(`/audit-engagements/${encodeURIComponent(eid)}/compliance/findings`),
+    const qp = { params: dashboardParams };
+    const [eng, st, fin] = await Promise.all([
+      http.get(`/audit-engagements/${encodeURIComponent(eid)}`, qp),
+      http.get(`/audit-engagements/${encodeURIComponent(eid)}/compliance/status`, qp),
+      http.get(`/audit-engagements/${encodeURIComponent(eid)}/compliance/findings`, qp),
     ]);
+    const entityCode = eng.data?.entity_code;
+    const lib = await http.get("/compliance/library", {
+      params: { ...dashboardParams, ...(entityCode ? { entity_code: entityCode } : {}) },
+    });
     setStatus(st.data);
     setLibrary(lib.data);
     setFindings(fin.data?.items || []);
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     load().catch(() => toast.error("Failed to load compliance"));
@@ -31,7 +38,7 @@ export default function IndiaComplianceDashboard() {
 
   const buildChecklist = async () => {
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/compliance/checklist`, { law_codes: [] });
+      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/compliance/checklist`, { law_codes: [] }, { params: dashboardParams });
       await load();
       toast.success("Full India checklist built");
     } catch {
@@ -41,7 +48,8 @@ export default function IndiaComplianceDashboard() {
 
   const exportCsv = () => {
     const token = localStorage.getItem("ota_token");
-    const url = `${API}/audit-engagements/${encodeURIComponent(eid)}/compliance/export`;
+    const qs = new URLSearchParams(dashboardParams).toString();
+    const url = `${API}/audit-engagements/${encodeURIComponent(eid)}/compliance/export${qs ? `?${qs}` : ""}`;
     fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then((r) => r.blob())
       .then((blob) => {
@@ -61,12 +69,16 @@ export default function IndiaComplianceDashboard() {
       return;
     }
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/compliance/findings`, {
-        law_code: findingForm.law_code,
-        title: findingForm.title.trim(),
-        notes: findingForm.notes.trim() || null,
-        severity: "medium",
-      });
+      await http.post(
+        `/audit-engagements/${encodeURIComponent(eid)}/compliance/findings`,
+        {
+          law_code: findingForm.law_code,
+          title: findingForm.title.trim(),
+          notes: findingForm.notes.trim() || null,
+          severity: "medium",
+        },
+        { params: dashboardParams },
+      );
       setFindingForm((f) => ({ ...f, title: "", notes: "" }));
       await load();
       toast.success("Finding logged");

@@ -12,6 +12,7 @@ async def semantic_search(
     query: str,
     k: int = 8,
     scope: Optional[Dict[str, Any]] = None,
+    allowed_source_types: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Return chunks with citations compatible with existing copilot format."""
     provider = HashEmbeddingProvider()
@@ -22,6 +23,8 @@ async def semantic_search(
         q["metadata.entity"] = scope["entity"]
     if scope.get("process"):
         q["metadata.process"] = scope["process"]
+    if allowed_source_types:
+        q["metadata.source_type"] = {"$in": list(allowed_source_types)}
 
     # Pull a bounded set from Mongo; this is a simple implementation (can be replaced by vector DB later).
     chunks = [c async for c in db.embedding_chunks.find(q, {"_id": 0}).limit(5000)]
@@ -49,4 +52,16 @@ async def semantic_search(
 async def hybrid_search(db, *, query: str, k: int = 8) -> List[Dict[str, Any]]:
     """Hybrid placeholder: semantic only today; keep function so we can merge TF-IDF later."""
     return await semantic_search(db, query=query, k=k)
+
+
+async def hybrid_search_scoped(
+    db,
+    *,
+    query: str,
+    k: int = 8,
+    scope: Optional[Dict[str, Any]] = None,
+    allowed_source_types: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Phase 37/40 — allow callers to enforce scope/RBAC on retrieval."""
+    return await semantic_search(db, query=query, k=k, scope=scope, allowed_source_types=allowed_source_types)
 

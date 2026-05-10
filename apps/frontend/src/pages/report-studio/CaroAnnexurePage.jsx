@@ -2,22 +2,25 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { http } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { SectionCard } from "../../components/PageShell";
 
 export default function CaroAnnexurePage() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const [state, setState] = useState(null);
   const [responses, setResponses] = useState(null);
 
   const load = useCallback(async () => {
+    const qp = { params: dashboardParams };
     const [{ data: st }, { data: resp }] = await Promise.all([
-      http.get(`/audit-engagements/${encodeURIComponent(eid)}/caro/state`),
-      http.get(`/audit-engagements/${encodeURIComponent(eid)}/caro/responses`),
+      http.get(`/audit-engagements/${encodeURIComponent(eid)}/caro/state`, qp),
+      http.get(`/audit-engagements/${encodeURIComponent(eid)}/caro/responses`, qp),
     ]);
     setState(st);
     setResponses(resp);
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     load().catch(() => {});
@@ -25,7 +28,7 @@ export default function CaroAnnexurePage() {
 
   const gen = async () => {
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/caro/generate`);
+      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/caro/generate`, {}, { params: dashboardParams });
       await load();
       toast.success("CARO annexure refreshed");
     } catch {

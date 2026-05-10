@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/doa", tags=["doa"])
@@ -81,6 +82,7 @@ async def _ensure_seed_doa(entity_code: Optional[str] = None) -> Dict[str, int]:
 
 @router.get("/matrix")
 async def doa_matrix(entity_code: Optional[str] = Query(None), category: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_doa(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -95,9 +97,12 @@ async def doa_matrix(entity_code: Optional[str] = Query(None), category: Optiona
 @router.post("/matrix")
 async def doa_matrix_create(body: Dict[str, Any], current=Depends(get_current_user)):
     mid = f"DOA-{__import__('uuid').uuid4().hex[:10]}"
+    ent = await enforce_entity_scope(
+        db, current=current, requested_entity_code=(body.get("entity") or body.get("entity_code"))
+    )
     doc = {
         "id": mid,
-        "entity": body.get("entity") or "US-HQ",
+        "entity": ent or body.get("entity") or "US-HQ",
         "category": body.get("category") or "opex",
         "approver_role": body.get("approver_role") or "controller",
         "max_amount": float(body.get("max_amount") or 0.0),
@@ -115,6 +120,7 @@ async def doa_matrix_create(body: Dict[str, Any], current=Depends(get_current_us
 
 @router.get("/rules")
 async def doa_rules(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_doa(entity_code=entity_code)
     q: Dict[str, Any] = {"entity": entity_code} if entity_code else {}
     cur = db.doa_rules.find(q, {"_id": 0}).sort("id", 1).limit(5000)
@@ -125,9 +131,12 @@ async def doa_rules(entity_code: Optional[str] = Query(None), current=Depends(ge
 @router.post("/rules")
 async def doa_rules_create(body: Dict[str, Any], current=Depends(get_current_user)):
     rid = f"DOA-R-{__import__('uuid').uuid4().hex[:8]}"
+    ent = await enforce_entity_scope(
+        db, current=current, requested_entity_code=(body.get("entity") or body.get("entity_code"))
+    )
     doc = {
         "id": rid,
-        "entity": body.get("entity") or "US-HQ",
+        "entity": ent or body.get("entity") or "US-HQ",
         "name": body.get("name") or "DoA rule",
         "category": body.get("category") or "opex",
         "currency": body.get("currency") or "INR",
@@ -151,7 +160,11 @@ async def _resolve_limit(entity: str, category: str) -> float:
 @router.post("/validate-transaction")
 async def doa_validate_transaction(body: Dict[str, Any], current=Depends(get_current_user)):
     """Validate a transaction against the DoA matrix; creates a breach when exceeded."""
-    entity = body.get("entity") or current.get("entity") or "US-HQ"
+    entity = await enforce_entity_scope(
+        db, current=current, requested_entity_code=(body.get("entity") or body.get("entity_code"))
+    )
+    if not entity:
+        entity = str(body.get("entity") or body.get("entity_code") or current.get("entity") or "US-HQ")
     category = body.get("category") or "opex"
     currency = body.get("currency") or "INR"
     amount = float(body.get("amount") or 0.0)
@@ -201,6 +214,7 @@ async def doa_validate_transaction(body: Dict[str, Any], current=Depends(get_cur
 
 @router.get("/breaches")
 async def doa_breaches(entity_code: Optional[str] = Query(None), status: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=5000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_doa(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -215,6 +229,9 @@ async def doa_breaches(entity_code: Optional[str] = Query(None), status: Optiona
 
 @router.post("/breaches/{breach_id}/exception-approval")
 async def doa_exception_approval(breach_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    br = await db.doa_breaches.find_one({"id": breach_id}, {"_id": 0, "entity": 1})
+    if br and br.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=br.get("entity"))
     decision = str(body.get("decision") or body.get("status") or "approved")
     if decision not in {"approved", "rejected"}:
         raise HTTPException(400, "Invalid decision")

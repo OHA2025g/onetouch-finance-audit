@@ -993,7 +993,10 @@ async def evidence_graph(db, exception_id: str) -> Dict[str, Any]:
                    or rec.get("asset_code") or rec.get("project_code")
                    or rec.get("reference") or rec.get("employee_code")
                    or rec.get("id"))
-            add_node(src_id, "transaction", f"{src_type.title()} · {lbl}", f"${rec.get('amount', rec.get('total_amount', 0)):,.2f}" if isinstance(rec.get('amount', rec.get('total_amount')), (int, float)) else None, rec)
+            # Evidence Explorer drill-down uses this (graph nodes are uniformly type "transaction").
+            rec_meta = dict(rec)
+            rec_meta["evidence_source_type"] = src_type
+            add_node(src_id, "transaction", f"{src_type.title()} · {lbl}", f"${rec.get('amount', rec.get('total_amount', 0)):,.2f}" if isinstance(rec.get('amount', rec.get('total_amount')), (int, float)) else None, rec_meta)
             edges.append({"source": ex["id"], "target": src_id, "relation": "references"})
             # Link related PO/GRN if invoice
             if src_type == "invoice" and rec.get("po_id"):

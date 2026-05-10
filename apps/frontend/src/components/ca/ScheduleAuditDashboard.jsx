@@ -10,6 +10,7 @@ import { Textarea } from "../ui/textarea";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { useAuth } from "../../lib/auth";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 
 const TABS = [
   { id: "assets", label: "Fixed assets" },
@@ -26,6 +27,7 @@ function flagLabel(key) {
 export default function ScheduleAuditDashboard({ engagementId, compact = false }) {
   const eid = engagementId;
   const { user } = useAuth();
+  const dashboardParams = useDashboardFilterParams();
   const [tab, setTab] = useState("assets");
   const [doc, setDoc] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -43,18 +45,18 @@ export default function ScheduleAuditDashboard({ engagementId, compact = false }
   const loadSummary = useCallback(async () => {
     if (!eid) return;
     try {
-      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/schedules`);
+      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/schedules`, { params: dashboardParams });
       setSummary(data);
     } catch {
       setSummary(null);
     }
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   const loadDoc = useCallback(async () => {
     if (!eid) return;
     setLoading(true);
     try {
-      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/schedules/${tab}`);
+      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/schedules/${tab}`, { params: dashboardParams });
       setDoc(data);
       const c = data?.conclusion || {};
       setConclusion(c.conclusion || "");
@@ -66,7 +68,7 @@ export default function ScheduleAuditDashboard({ engagementId, compact = false }
     } finally {
       setLoading(false);
     }
-  }, [eid, tab, user?.email]);
+  }, [eid, tab, user?.email, dashboardParams]);
 
   useEffect(() => {
     loadSummary();
@@ -78,12 +80,16 @@ export default function ScheduleAuditDashboard({ engagementId, compact = false }
 
   const saveConclusion = async () => {
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/schedules/${tab}/conclusion`, {
-        conclusion: conclusion || "—",
-        preparer_email: user?.email,
-        reviewer_email: reviewerEmail || user?.email,
-        signed_off: signedOff,
-      });
+      await http.post(
+        `/audit-engagements/${encodeURIComponent(eid)}/schedules/${tab}/conclusion`,
+        {
+          conclusion: conclusion || "—",
+          preparer_email: user?.email,
+          reviewer_email: reviewerEmail || user?.email,
+          signed_off: signedOff,
+        },
+        { params: dashboardParams },
+      );
       toast.success("Conclusion saved");
       await loadDoc();
       await loadSummary();
@@ -98,14 +104,18 @@ export default function ScheduleAuditDashboard({ engagementId, compact = false }
       return;
     }
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/schedules/${tab}/exception`, {
-        title: exTitle.trim(),
-        description: exDesc.trim(),
-        amount: exAmt ? parseFloat(exAmt, 10) : null,
-        severity: "medium",
-        create_case: false,
-        exception_flag: exFlag.trim() || null,
-      });
+      await http.post(
+        `/audit-engagements/${encodeURIComponent(eid)}/schedules/${tab}/exception`,
+        {
+          title: exTitle.trim(),
+          description: exDesc.trim(),
+          amount: exAmt ? parseFloat(exAmt, 10) : null,
+          severity: "medium",
+          create_case: false,
+          exception_flag: exFlag.trim() || null,
+        },
+        { params: dashboardParams },
+      );
       toast.success("Exception logged");
       setExTitle("");
       setExDesc("");
@@ -124,11 +134,15 @@ export default function ScheduleAuditDashboard({ engagementId, compact = false }
       return;
     }
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/schedules/${tab}/evidence`, {
-        label: evLabel.trim(),
-        reference: evRef.trim(),
-        ref_type: "file",
-      });
+      await http.post(
+        `/audit-engagements/${encodeURIComponent(eid)}/schedules/${tab}/evidence`,
+        {
+          label: evLabel.trim(),
+          reference: evRef.trim(),
+          ref_type: "file",
+        },
+        { params: dashboardParams },
+      );
       toast.success("Evidence attached");
       setEvLabel("");
       setEvRef("");
@@ -141,7 +155,7 @@ export default function ScheduleAuditDashboard({ engagementId, compact = false }
 
   const setProcedureStatus = async (procId, status) => {
     try {
-      await http.put(`/audit-engagements/${encodeURIComponent(eid)}/schedules/${tab}/procedures/${encodeURIComponent(procId)}`, { status });
+      await http.put(`/audit-engagements/${encodeURIComponent(eid)}/schedules/${tab}/procedures/${encodeURIComponent(procId)}`, { status }, { params: dashboardParams });
       toast.success("Procedure updated");
       await loadDoc();
       await loadSummary();

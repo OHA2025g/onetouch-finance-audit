@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/forex", tags=["forex"])
@@ -104,6 +105,7 @@ async def _ensure_seed_forex(entity_code: Optional[str] = None) -> Dict[str, int
 
 @router.get("/summary")
 async def forex_summary(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_forex(entity_code=entity_code)
     q: Dict[str, Any] = {"entity": entity_code} if entity_code else {}
     exposures = [e async for e in db.fx_exposures.find(q, {"_id": 0}).limit(500)]
@@ -144,6 +146,7 @@ async def forex_summary(entity_code: Optional[str] = Query(None), current=Depend
 
 @router.get("/exposures")
 async def forex_exposures(entity_code: Optional[str] = Query(None), pair: Optional[str] = Query(None), status: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=2000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_forex(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -160,6 +163,7 @@ async def forex_exposures(entity_code: Optional[str] = Query(None), pair: Option
 
 @router.get("/hedges")
 async def forex_hedges(entity_code: Optional[str] = Query(None), pair: Optional[str] = Query(None), status: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=2000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_forex(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -177,6 +181,7 @@ async def forex_hedges(entity_code: Optional[str] = Query(None), pair: Optional[
 @router.get("/unhedged-risk")
 async def forex_unhedged_risk(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
     """Unhedged risk surface: group exposures - hedges by pair with a proxy risk score."""
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_forex(entity_code=entity_code)
     summ = await forex_summary(entity_code=entity_code, current=current)
     items = []
@@ -192,6 +197,7 @@ async def forex_unhedged_risk(entity_code: Optional[str] = Query(None), current=
 @router.get("/gain-loss")
 async def forex_gain_loss(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
     """Proxy realized/unrealized gain-loss using locked vs latest mid on hedges."""
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_forex(entity_code=entity_code)
     q: Dict[str, Any] = {"entity": entity_code} if entity_code else {}
     hedges = [h async for h in db.fx_hedges.find(q, {"_id": 0}).limit(500)]
@@ -218,13 +224,16 @@ async def forex_gain_loss(entity_code: Optional[str] = Query(None), current=Depe
 
 @router.post("/hedges")
 async def forex_hedge_create(body: Dict[str, Any], current=Depends(get_current_user)):
-    await _ensure_seed_forex(entity_code=body.get("entity"))
+    ent = await enforce_entity_scope(
+        db, current=current, requested_entity_code=(body.get("entity") or body.get("entity_code"))
+    )
+    await _ensure_seed_forex(entity_code=ent or body.get("entity"))
     hid = f"HEDGE-{__import__('uuid').uuid4().hex[:10]}"
     pair = str(body.get("pair") or "USD/INR")
     spot = await _latest_rate(pair) or 1.0
     doc = {
         "id": hid,
-        "entity": body.get("entity") or "US-HQ",
+        "entity": ent or body.get("entity") or "US-HQ",
         "pair": pair,
         "exposure_id": body.get("exposure_id"),
         "hedge_type": body.get("hedge_type") or "forward",
@@ -248,6 +257,9 @@ async def forex_create_case(source_id: str, body: Dict[str, Any], current=Depend
     hedge = None if exp else await db.fx_hedges.find_one({"id": source_id}, {"_id": 0})
     if not exp and not hedge:
         raise HTTPException(404, "Exposure/Hedge not found")
+    ent_src = (exp or hedge).get("entity")
+    if ent_src:
+        await enforce_entity_scope(db, current=current, requested_entity_code=ent_src)
 
     now = as_of_now()
     cid = f"case-fx-{__import__('uuid').uuid4().hex[:10]}"

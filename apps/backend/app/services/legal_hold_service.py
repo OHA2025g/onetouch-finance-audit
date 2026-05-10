@@ -47,10 +47,24 @@ async def governance_flags_for_case(db, case_id: str) -> Dict[str, Any]:
     return {"legal_hold": on_hold, "worm": worm, "holds": holds}
 
 
-async def list_holds(db, status: Optional[str] = "active", limit: int = 200) -> List[Dict[str, Any]]:
-    q: Dict[str, Any] = {}
+async def list_holds(
+    db,
+    status: Optional[str] = "active",
+    limit: int = 200,
+    *,
+    entity_code: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    parts: List[Dict[str, Any]] = []
     if status:
-        q["status"] = status
+        parts.append({"status": status})
+    if entity_code:
+        parts.append({"$or": [{"entity_code": entity_code}, {"scope": "global"}]})
+    if not parts:
+        q: Dict[str, Any] = {}
+    elif len(parts) == 1:
+        q = parts[0]
+    else:
+        q = {"$and": parts}
     return [h async for h in db.legal_holds.find(q, {"_id": 0}).sort("created_at", -1).limit(limit)]
 
 

@@ -32,7 +32,7 @@ async def finance_team_dashboard(
         department_id=department_id,
         cost_center_id=cost_center_id,
     )
-    cycles = await cs.list_cycles(db)
+    cycles = await cs.list_cycles(db, entity_code=entity_code)
     open_tasks = await db.close_tasks.count_documents(
         {"status": {"$in": ["draft", "reopened", "submitted"]}}
     )
@@ -100,12 +100,8 @@ async def finance_team_rework(db) -> Dict[str, Any]:
 
 async def finance_team_bottlenecks(db) -> Dict[str, Any]:
     """Return bottlenecks for the most recent cycle if present."""
-    cycles = await cs.list_cycles(db)
-    if not cycles:
-        return {"cycle_id": None, "pending": 0, "by_owner": {}, "top": [], "as_of": as_of_now()}
-    cycle_id = cycles[0]["id"]
-    b = await cs.bottlenecks(db, cycle_id)
-    return {**b, "cycle_id": cycle_id, "as_of": as_of_now()}
+    b = await cs.bottlenecks(db, None)
+    return {**b, "as_of": as_of_now()}
 
 
 async def finance_team_scorecards(db) -> Dict[str, Any]:

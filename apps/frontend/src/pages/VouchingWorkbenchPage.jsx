@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { drillTargetFromTxnId, useWorkbenchRowDrill } from "../lib/workbenchDrillNav";
 import { SectionCard } from "../components/PageShell";
 
@@ -16,6 +17,7 @@ const TICKS = [
 
 export default function VouchingWorkbenchPage() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const { drillToTarget } = useWorkbenchRowDrill();
   const eid = decodeURIComponent(engagementId || "");
   const [bundle, setBundle] = useState({ working_papers: [], vouching_items: [] });
@@ -28,10 +30,10 @@ export default function VouchingWorkbenchPage() {
   const [notes, setNotes] = useState("");
 
   const load = useCallback(async () => {
-    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/wp-workbench`);
+    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/wp-workbench`, { params: dashboardParams });
     setBundle(data);
     setWpId((prev) => prev || data.working_papers?.[0]?.id || "");
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     if (!eid) return;
@@ -48,16 +50,20 @@ export default function VouchingWorkbenchPage() {
       return;
     }
     try {
-      await http.post("/vouching-items", {
-        engagement_id: eid,
-        working_paper_id: wpId,
-        transaction_ref: txRef.trim(),
-        amount: amount === "" ? null : Number(amount),
-        tick_mark: tick,
-        evidence_reference: evidenceRef.trim() || null,
-        conclusion: conclusion.trim() || null,
-        notes: notes.trim() || null,
-      });
+      await http.post(
+        "/vouching-items",
+        {
+          engagement_id: eid,
+          working_paper_id: wpId,
+          transaction_ref: txRef.trim(),
+          amount: amount === "" ? null : Number(amount),
+          tick_mark: tick,
+          evidence_reference: evidenceRef.trim() || null,
+          conclusion: conclusion.trim() || null,
+          notes: notes.trim() || null,
+        },
+        { params: dashboardParams },
+      );
       setTxRef("");
       setAmount("");
       setEvidenceRef("");
@@ -72,7 +78,7 @@ export default function VouchingWorkbenchPage() {
 
   const patchItem = async (id, patch) => {
     try {
-      await http.put(`/vouching-items/${encodeURIComponent(id)}`, patch);
+      await http.put(`/vouching-items/${encodeURIComponent(id)}`, patch, { params: dashboardParams });
       await load();
     } catch {
       toast.error("Update failed");

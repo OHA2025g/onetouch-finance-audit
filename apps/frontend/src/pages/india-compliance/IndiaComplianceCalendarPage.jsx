@@ -2,20 +2,22 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { http } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { SectionCard } from "../../components/PageShell";
 import { PenaltyRiskBadge } from "../../components/Badges";
 
 export default function IndiaComplianceCalendarPage() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const [data, setData] = useState({ events: [], filings: [] });
 
   useEffect(() => {
     http
-      .get(`/audit-engagements/${encodeURIComponent(eid)}/compliance-calendar`)
+      .get(`/audit-engagements/${encodeURIComponent(eid)}/compliance-calendar`, { params: dashboardParams })
       .then((r) => setData(r.data))
       .catch(() => toast.error("Calendar load failed"));
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

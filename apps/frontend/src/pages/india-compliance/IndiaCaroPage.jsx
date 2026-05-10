@@ -2,20 +2,22 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { http } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { SectionCard } from "../../components/PageShell";
 
 const STATUSES = ["compliant", "non-compliant", "pending evidence", "not applicable"];
 
 export default function IndiaCaroPage() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const [clauses, setClauses] = useState([]);
   const [clauseInput, setClauseInput] = useState("3(i),3(ii),3(iii),3(vii)(a)");
 
   const load = useCallback(async () => {
-    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/caro/state`);
+    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/caro/state`, { params: dashboardParams });
     setClauses(data.caro_clauses || []);
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     load().catch(() => {});
@@ -24,7 +26,7 @@ export default function IndiaCaroPage() {
   const init = async () => {
     const ids = clauseInput.split(/[\s,]+/).filter(Boolean);
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/caro/checklist`, { clause_ids: ids });
+      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/caro/checklist`, { clause_ids: ids }, { params: dashboardParams });
       await load();
       toast.success("CARO checklist ready");
     } catch {
@@ -34,7 +36,7 @@ export default function IndiaCaroPage() {
 
   const gen = async () => {
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/caro/generate`);
+      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/caro/generate`, {}, { params: dashboardParams });
       toast.success("CARO narrative generated (demo)");
     } catch {
       toast.error("Generate failed");
@@ -43,7 +45,7 @@ export default function IndiaCaroPage() {
 
   const updateClause = async (clauseId, status) => {
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/caro/clause`, { clause_id: clauseId, status });
+      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/caro/clause`, { clause_id: clauseId, status }, { params: dashboardParams });
       await load();
     } catch {
       toast.error("Update failed");

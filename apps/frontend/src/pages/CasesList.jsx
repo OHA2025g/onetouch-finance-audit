@@ -8,8 +8,7 @@ import { MagnifyingGlass } from "@phosphor-icons/react";
 import InsightPanel from "../components/InsightPanel";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
-import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 
 export default function CasesList() {
@@ -21,7 +20,7 @@ export default function CasesList() {
   const [processFilter, setProcessFilter] = useState(searchParams.get("process") || "");
   const [entity, setEntity] = useState(searchParams.get("entity") || "");
   const nav = useNavigate();
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId } = useMastersFilters();
+  const baseMasterParams = useDashboardFilterParams();
 
   // Keep triage filters aligned with URL (heatmap / CFO drill-down updates query without remount).
   useEffect(() => {
@@ -35,13 +34,7 @@ export default function CasesList() {
     const engagementId = searchParams.get("engagement_id") || undefined;
     const drillProcess = searchParams.get("process") || "";
     const drillEntity = searchParams.get("entity") || "";
-    const masterParams = buildDashboardFilterParams({
-      entityCode,
-      periodYm,
-      periodExplicit,
-      departmentId,
-      costCenterId,
-    });
+    const masterParams = { ...baseMasterParams };
     // Heatmap / CFO drill uses `entity` + `process` query keys; scope API fetches to that cell so
     // client filters are satisfiable even when the masters strip pins a different `m_entity`.
     const apiScope = { ...masterParams };
@@ -97,7 +90,7 @@ export default function CasesList() {
       }));
       setAll([...cases.data, ...shadow]);
     });
-  }, [searchParams, entityCode, periodYm, periodExplicit, departmentId, costCenterId]);
+  }, [searchParams, baseMasterParams]);
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();

@@ -71,77 +71,104 @@ const CFO_GROUPS = [
     id: "cfo-command-center",
     title: "CFO Command Center",
     items: [
-      { to: "/app/cfo-command-center", label: "Overview", icon: SquaresFour, roles: ROLES.CFO_LIKE },
       { to: "/app/cfo", label: "CFO Cockpit", icon: Gauge, roles: ROLES.CFO_LIKE },
       { to: "/app/cfo-action-queue", label: "Action queue", icon: ClipboardText, roles: ROLES.CFO_LIKE },
       { to: "/app/readiness", label: "Process readiness matrix", icon: Pulse, roles: ROLES.CFO_LIKE },
       { to: "/app/controller", label: "Controller dashboard", icon: ChartPieSlice, roles: ROLES.CFO_LIKE },
       { to: "/app/rollups", label: "Entity rollups", icon: TreeStructure, roles: ROLES.CFO_LIKE },
+      { to: "/app/executive-review", label: "Executive review", icon: ChartPieSlice, roles: ROLES.CFO_LIKE },
     ],
   },
   {
     id: "finance-operations",
     title: "Finance Operations",
     items: [
-      { to: "/app/finance-operations", label: "Operations hub", icon: Factory, roles: ROLES.CFO_LIKE },
+      { to: "/app/finance-operations/month-end-close", label: "Month-end close", icon: Pulse, roles: ROLES.CFO_LIKE },
       { to: "/app/finance-operations/team-performance", label: "Finance team", icon: Users, roles: ROLES.CFO_LIKE },
+      { to: "/app/finance-operations/budget-master", label: "Budget master", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
+      { to: "/app/finance-operations/budget-vs-actual-dashboard", label: "Budget vs actual", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
+      { to: "/app/finance-operations/forecast-accuracy-dashboard", label: "Forecast accuracy", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
+      { to: "/app/finance-operations/fpa", label: "FP&A snapshot", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
+      { to: "/app/audit", label: "Audit workspace", icon: Scales, roles: ROLES.CFO_LIKE },
     ],
   },
   {
     id: "financial-audit",
     title: "Financial Audit",
     items: [
-      { to: "/app/financial-audit", label: "Audit hub", icon: Scales, roles: ROLES.CFO_LIKE },
-      { to: "/app/audit", label: "Audit workspace", icon: Scales, roles: ROLES.CFO_LIKE },
+      { to: "/app/financial-audit/gl-audit-dashboard", label: "GL audit workbench", icon: ChartPieSlice, roles: ROLES.CFO_LIKE },
+      { to: "/app/financial-audit/journal-risk-dashboard", label: "Journal risk", icon: WarningCircle, roles: ROLES.CFO_LIKE },
+      { to: "/app/financial-audit/reconciliations-dashboard", label: "Reconciliations", icon: ListChecks, roles: ROLES.CFO_LIKE },
+      { to: "/app/financial-audit/bank-reconciliation-dashboard", label: "Bank reconciliation", icon: Wallet, roles: ROLES.CFO_LIKE },
+      { to: "/app/financial-audit/inventory-audit-dashboard", label: "Inventory audit", icon: Briefcase, roles: ROLES.CFO_LIKE },
+      { to: "/app/financial-audit/physical-verification-dashboard", label: "Physical verification", icon: Briefcase, roles: ROLES.CFO_LIKE },
+      { to: "/app/financial-audit/fixed-assets-capex-dashboard", label: "Fixed assets · CAPEX", icon: Briefcase, roles: ROLES.CFO_LIKE },
+      { to: "/app/audit-planning", label: "Audit planning", icon: CalendarBlank, roles: ROLES.CFO_LIKE },
+      { to: "/app/evidence", label: "Evidence explorer", icon: Graph, roles: ROLES.CFO_LIKE },
     ],
   },
   {
     id: "continuous-audit",
     title: "Continuous Audit",
     items: [
-      { to: "/app/continuous-audit", label: "Continuous audit hub", icon: InfinityIcon, roles: ROLES.CFO_LIKE },
       { to: "/app/executive-review?tab=assurance", label: "Continuous assurance", icon: Pulse, roles: ROLES.CFO_LIKE },
+      { to: "/app/continuous-audit/rules-engine-dashboard", label: "Rules engine", icon: Command, roles: ROLES.CFO_LIKE },
+      { to: "/app/continuous-audit/vendor-risk-dashboard", label: "Vendor risk", icon: WarningCircle, roles: ROLES.CFO_LIKE },
+      { to: "/app/continuous-audit/three-way-match-dashboard", label: "Three-way match", icon: ListChecks, roles: ROLES.CFO_LIKE },
+      { to: "/app/continuous-audit/o2c-audit-dashboard", label: "O2C audit", icon: ChartPieSlice, roles: ROLES.CFO_LIKE },
+      { to: "/app/continuous-audit/credit-notes-dashboard", label: "Credit notes", icon: ChartPieSlice, roles: ROLES.CFO_LIKE },
+      { to: "/app/audit", label: "Controls & tests", icon: Scales, roles: ROLES.CFO_LIKE },
     ],
   },
   {
     id: "working-capital",
     title: "Working Capital",
     items: [
-      { to: "/app/working-capital-command-center", label: "Overview", icon: SquaresFour, roles: ROLES.CFO_LIKE },
       { to: "/app/working-capital", label: "WC dashboard", icon: Wallet, roles: ROLES.CFO_LIKE },
+      { to: "/app/working-capital/receivables", label: "Receivables · AR ageing", icon: Wallet, roles: ROLES.CFO_LIKE },
+      { to: "/app/working-capital/payables", label: "Payables · AP ageing", icon: Wallet, roles: ROLES.CFO_LIKE },
+      { to: "/app/working-capital/cash-conversion", label: "Cash conversion cycle", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
     ],
   },
   {
     id: "treasury",
     title: "Treasury",
     items: [
-      { to: "/app/treasury-command-center", label: "Overview", icon: SquaresFour, roles: ROLES.CFO_LIKE },
       { to: "/app/treasury", label: "Treasury hub", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
+      { to: "/app/treasury/cash-forecast", label: "Cash forecast · 13-week", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
+      { to: "/app/treasury/debt-investments-dashboard", label: "Debt & investments", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
+      { to: "/app/treasury/forex-exposure-dashboard", label: "Forex exposure", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
+      { to: "/app/connectors", label: "Bank / ERP connectors", icon: Plug, roles: ROLES.CFO_LIKE },
     ],
   },
   {
     id: "compliance",
     title: "Compliance",
     items: [
-      { to: "/app/compliance-command-center", label: "Compliance hub", icon: SquaresFour, roles: ROLES.CFO_LIKE },
       { to: "/app/compliance", label: "Compliance dashboard", icon: ShieldCheck, roles: ROLES.CFO_LIKE },
+      { to: "/app/compliance/rpt-dashboard", label: "Related party transactions", icon: Gavel, roles: ROLES.CFO_LIKE },
+      { to: "/app/compliance/legal-dashboard", label: "Legal notices & litigation", icon: Gavel, roles: ROLES.CFO_LIKE },
     ],
   },
   {
     id: "risk-intelligence",
     title: "Risk Intelligence",
     items: [
-      { to: "/app/risk-intelligence-command-center", label: "Risk hub", icon: SquaresFour, roles: ROLES.CFO_LIKE },
       { to: "/app/risk-intelligence", label: "Risk intelligence", icon: WarningCircle, roles: ROLES.CFO_LIKE },
+      { to: "/app/risk-intelligence/risk-scoring-dashboard", label: "Risk scoring", icon: WarningCircle, roles: ROLES.CFO_LIKE },
+      { to: "/app/risk-intelligence/doa-dashboard", label: "Delegation of authority", icon: Scales, roles: ROLES.CFO_LIKE },
+      { to: "/app/risk-intelligence/policy-compliance-dashboard", label: "Policy compliance", icon: ShieldCheck, roles: ROLES.CFO_LIKE },
+      { to: "/app/risk-intelligence/user-access-sod-dashboard", label: "Access & SoD", icon: ShieldCheck, roles: ROLES.CFO_LIKE },
+      { to: "/app/risk-intelligence/master-data-quality-dashboard", label: "Master data quality", icon: UploadSimple, roles: ROLES.CFO_LIKE },
     ],
   },
   {
     id: "evidence-cases",
     title: "Evidence & Cases",
     items: [
-      { to: "/app/evidence-cases", label: "Evidence & cases hub", icon: Graph, roles: ROLES.CFO_LIKE },
       { to: "/app/my-cases", label: "My cases", icon: Briefcase, roles: ROLES.CFO_LIKE },
       { to: "/app/cases", label: "All cases", icon: ListChecks, roles: ROLES.CFO_LIKE },
+      { to: "/app/evidence/evidence-intelligence-dashboard", label: "Evidence intelligence", icon: Graph, roles: ROLES.CFO_LIKE },
       { to: "/app/evidence", label: "Evidence explorer", icon: Graph, roles: ROLES.CFO_LIKE },
     ],
   },
@@ -149,17 +176,18 @@ const CFO_GROUPS = [
     id: "board-reporting",
     title: "Board Reporting",
     items: [
-      { to: "/app/board-reporting", label: "Board hub", icon: PresentationChart, roles: ROLES.CFO_LIKE },
       { to: "/app/executive-review", label: "CFO & Committee hub", icon: ChartPieSlice, roles: ROLES.CFO_LIKE },
       { to: "/app/audit-committee", label: "Audit committee", icon: ChartPieSlice, roles: ROLES.CFO_LIKE },
+      { to: "/app/board-reporting/report-automation-dashboard", label: "Report automation", icon: PresentationChart, roles: ROLES.CFO_LIKE },
+      { to: "/app/reporting-studio", label: "Reporting studio", icon: ClipboardText, roles: ROLES.CFO_LIKE },
     ],
   },
   {
     id: "ai-copilot",
     title: "AI Copilot",
     items: [
-      { to: "/app/ai-copilot", label: "AI hub", icon: Sparkle, roles: ROLES.CFO_LIKE },
       { to: "/app/copilot", label: "Copilot workspace", icon: ChatCircleDots, roles: ROLES.CFO_LIKE },
+      { to: "/app/copilot/copilot-2-dashboard", label: "Copilot 2.0", icon: ChatCircleDots, roles: ROLES.CFO_LIKE },
     ],
   },
 ];
@@ -258,7 +286,7 @@ function auditorNavGroups(user) {
     { id: "board", title: "Board Reporting", items: dedupeNavItems(filterItems(user, board)) },
     { id: "evidence", title: "Evidence & Cases", items: dedupeNavItems(filterItems(user, evidenceCases)) },
     { id: "ai", title: "AI Copilot", items: dedupeNavItems(filterItems(user, ai)) },
-    { id: "wc-treasury-risk", title: "Finance ops · WC · Treasury · Risk", items: dedupeNavItems(filterItems(user, wcTreasuryRisk)) }
+    { id: "wc-treasury-risk", title: "Finance Ops · WC · Treasury · Risk", items: dedupeNavItems(filterItems(user, wcTreasuryRisk)) }
   );
 
   return groups.filter((g) => g.items.length > 0);
@@ -307,29 +335,90 @@ export function getSidebarNavGroups(user) {
   return filterGroups(u, CFO_GROUPS);
 }
 
-/** Longest-prefix match for breadcrumb titles */
+/** Longest-prefix match for breadcrumb titles (more specific paths must win via length sort in labelForPath). */
 export const ROUTE_LABELS = [
   { prefix: "/app/audit-planning/engagements", label: "Engagement" },
   { prefix: "/app/audit-planning/new", label: "New engagement" },
   { prefix: "/app/audit-planning/calendar", label: "Calendar" },
+  { prefix: "/app/audit-planning/control-library", label: "Control library" },
   { prefix: "/app/audit-planning", label: "Audit planning" },
+
+  { prefix: "/app/finance-operations/month-end-close", label: "Month-end close" },
+  { prefix: "/app/finance-operations/team-performance", label: "Finance team performance" },
+  { prefix: "/app/finance-operations/budget-vs-actual-dashboard", label: "Budget vs actual" },
+  { prefix: "/app/finance-operations/budget-vs-actual", label: "Budget vs actual" },
+  { prefix: "/app/finance-operations/forecast-accuracy-dashboard", label: "Forecast accuracy" },
+  { prefix: "/app/finance-operations/forecast-accuracy", label: "Forecast accuracy" },
+  { prefix: "/app/finance-operations/budget-master", label: "Budget master" },
+  { prefix: "/app/finance-operations/budget", label: "Budget master" },
+  { prefix: "/app/finance-operations/fpa", label: "FP&A snapshot" },
+  { prefix: "/app/finance-operations", label: "Finance operations" },
+
+  { prefix: "/app/financial-audit/gl-audit-dashboard", label: "GL audit workbench" },
+  { prefix: "/app/financial-audit/journal-risk-dashboard", label: "Journal risk" },
+  { prefix: "/app/financial-audit/reconciliations-dashboard", label: "Reconciliations workbench" },
+  { prefix: "/app/financial-audit/bank-reconciliation-dashboard", label: "Bank reconciliation" },
+  { prefix: "/app/financial-audit/inventory-audit-dashboard", label: "Inventory audit" },
+  { prefix: "/app/financial-audit/physical-verification-dashboard", label: "Physical verification" },
+  { prefix: "/app/financial-audit/fixed-assets-capex-dashboard", label: "Fixed assets & CAPEX" },
+  { prefix: "/app/financial-audit/gl-audit", label: "GL audit (hub)" },
+  { prefix: "/app/financial-audit/journal-risk", label: "Journal risk (hub)" },
+  { prefix: "/app/financial-audit/reconciliations", label: "Reconciliations (hub)" },
+  { prefix: "/app/financial-audit/bank-reconciliation", label: "Bank reconciliation (hub)" },
+  { prefix: "/app/financial-audit/inventory-audit", label: "Inventory audit (hub)" },
+  { prefix: "/app/financial-audit/physical-verification", label: "Physical verification (hub)" },
+  { prefix: "/app/financial-audit/fixed-assets-capex", label: "Fixed assets & CAPEX (hub)" },
+  { prefix: "/app/financial-audit", label: "Financial audit" },
+
+  { prefix: "/app/continuous-audit/rules-engine-dashboard", label: "Continuous audit rules" },
+  { prefix: "/app/continuous-audit/vendor-risk-dashboard", label: "Vendor risk" },
+  { prefix: "/app/continuous-audit/three-way-match-dashboard", label: "Three-way match" },
+  { prefix: "/app/continuous-audit/o2c-audit-dashboard", label: "Order-to-cash audit" },
+  { prefix: "/app/continuous-audit/credit-notes-dashboard", label: "Credit note analytics" },
+  { prefix: "/app/continuous-audit/revenue-audit", label: "Revenue assurance audit" },
+  { prefix: "/app/continuous-audit/credit-note-analytics", label: "Credit note analytics" },
+  { prefix: "/app/continuous-audit/rules-engine", label: "Rules engine (hub)" },
+  { prefix: "/app/continuous-audit/vendor-risk", label: "Vendor risk (hub)" },
+  { prefix: "/app/continuous-audit/three-way-match", label: "Three-way match (hub)" },
+  { prefix: "/app/continuous-audit", label: "Continuous audit" },
+
+  { prefix: "/app/working-capital/cash-conversion", label: "Cash conversion cycle" },
+  { prefix: "/app/working-capital/receivables", label: "Receivables · AR ageing" },
+  { prefix: "/app/working-capital/payables", label: "Payables · AP ageing" },
+  { prefix: "/app/working-capital-command-center", label: "Working capital · Command center" },
+  { prefix: "/app/working-capital", label: "Working capital" },
+
+  { prefix: "/app/treasury/cash-forecast", label: "Cash forecast · 13-week" },
+  { prefix: "/app/treasury/forex-exposure-dashboard", label: "Forex exposure workbench" },
+  { prefix: "/app/treasury/debt-investments-dashboard", label: "Debt & investments" },
+  { prefix: "/app/treasury/forex-exposure", label: "Forex exposure" },
+  { prefix: "/app/treasury/dashboard", label: "Treasury dashboard" },
+  { prefix: "/app/treasury-command-center", label: "Treasury · Command center" },
+  { prefix: "/app/treasury", label: "Treasury" },
+
+  { prefix: "/app/compliance/rpt-dashboard", label: "Related party transactions" },
+  { prefix: "/app/compliance/legal-dashboard", label: "Legal notices & litigation" },
+  { prefix: "/app/compliance/related-party-transactions", label: "Related party transactions" },
+  { prefix: "/app/compliance/notices-litigation", label: "Legal notices & litigation" },
+  { prefix: "/app/compliance-command-center", label: "Compliance · Command center" },
+  { prefix: "/app/compliance", label: "Compliance" },
+
+  { prefix: "/app/risk-intelligence-command-center", label: "Risk Intelligence Command Center" },
+  { prefix: "/app/risk-intelligence/policy-compliance-dashboard", label: "Policy compliance" },
+  { prefix: "/app/risk-intelligence/user-access-sod-dashboard", label: "User access & SoD" },
+  { prefix: "/app/risk-intelligence/master-data-quality-dashboard", label: "Master data quality" },
+  { prefix: "/app/risk-intelligence/risk-scoring-dashboard", label: "Risk scoring" },
+  { prefix: "/app/risk-intelligence/doa-dashboard", label: "Delegation of authority" },
+  { prefix: "/app/risk-intelligence/delegation-of-authority", label: "Delegation of authority (overview)" },
+  { prefix: "/app/risk-intelligence/policy-compliance", label: "Policy compliance (overview)" },
+  { prefix: "/app/risk-intelligence/user-access-sod", label: "Access & SoD (overview)" },
+  { prefix: "/app/risk-intelligence/master-data-quality", label: "Master data quality (overview)" },
+  { prefix: "/app/risk-intelligence", label: "Risk intelligence" },
+
   { prefix: "/app/cfo-command-center", label: "CFO Command Center" },
   { prefix: "/app/cfo-action-queue", label: "CFO action queue" },
   { prefix: "/app/kpi", label: "KPI drill-down" },
   { prefix: "/app/readiness", label: "Process readiness" },
-  { prefix: "/app/finance-operations", label: "Finance operations" },
-  { prefix: "/app/financial-audit", label: "Financial audit" },
-  { prefix: "/app/continuous-audit/rules-engine-dashboard", label: "Continuous audit rules" },
-  { prefix: "/app/continuous-audit", label: "Continuous audit" },
-  { prefix: "/app/working-capital", label: "Working capital" },
-  { prefix: "/app/treasury", label: "Treasury" },
-  { prefix: "/app/risk-intelligence-command-center", label: "Risk Intelligence Command Center" },
-  { prefix: "/app/risk-intelligence/policy-compliance-dashboard", label: "Policy compliance" },
-  { prefix: "/app/risk-intelligence/user-access-sod-dashboard", label: "Access & SoD" },
-  { prefix: "/app/risk-intelligence/master-data-quality-dashboard", label: "Master data quality" },
-  { prefix: "/app/risk-intelligence/risk-scoring-dashboard", label: "Risk scoring" },
-  { prefix: "/app/risk-intelligence/doa-dashboard", label: "Delegation of authority" },
-  { prefix: "/app/risk-intelligence", label: "Risk intelligence" },
   { prefix: "/app/evidence-cases", label: "Evidence & cases" },
   { prefix: "/app/board-reporting/report-automation-dashboard", label: "Report automation" },
   { prefix: "/app/board-reporting", label: "Board reporting" },
@@ -340,27 +429,41 @@ export const ROUTE_LABELS = [
   { prefix: "/app/enterprise-hardening", label: "Enterprise hardening hub" },
   { prefix: "/app/reconciliations", label: "Reconciliation" },
   { prefix: "/app/cfo", label: "CFO cockpit" },
-  { prefix: "/app/controller", label: "Controller" },
+  { prefix: "/app/controller", label: "Controller dashboard" },
   { prefix: "/app/audit", label: "Audit workspace" },
-  { prefix: "/app/compliance-command-center", label: "Compliance Command Center" },
-  { prefix: "/app/compliance", label: "Compliance" },
   { prefix: "/app/my-cases", label: "My cases" },
   { prefix: "/app/cases", label: "Cases" },
   { prefix: "/app/evidence/evidence-intelligence-dashboard", label: "Evidence intelligence" },
-  { prefix: "/app/evidence", label: "Evidence" },
+  { prefix: "/app/evidence/document-intelligence", label: "Document intelligence" },
+  { prefix: "/app/evidence", label: "Evidence explorer" },
   { prefix: "/app/copilot/copilot-2-dashboard", label: "Copilot 2.0" },
-  { prefix: "/app/copilot", label: "Copilot" },
-  { prefix: "/app/admin", label: "Admin" },
+  { prefix: "/app/copilot", label: "Copilot workspace" },
   { prefix: "/app/admin/security", label: "Security" },
   { prefix: "/app/admin/system-health", label: "System health" },
   { prefix: "/app/admin/audit-logs", label: "Audit logs" },
   { prefix: "/app/admin/org-backfill", label: "Org backfill" },
   { prefix: "/app/admin/master-audit", label: "Master audit trail" },
-  { prefix: "/app/admin/master-dq", label: "Master data quality" },
+  { prefix: "/app/admin/master-dq", label: "Master data quality (admin)" },
+  { prefix: "/app/admin", label: "Admin console" },
   { prefix: "/app/audit-log", label: "Audit log" },
   { prefix: "/app/executive-review", label: "Executive review" },
   { prefix: "/app/audit-committee", label: "Audit committee" },
   { prefix: "/app/drill", label: "Drill-down" },
+  // Drill types (used by global Breadcrumbs; `labelForPath` further customizes leaf nodes)
+  { prefix: "/app/drill/user", label: "User" },
+  { prefix: "/app/drill/vendor", label: "Vendor" },
+  { prefix: "/app/drill/customer", label: "Customer" },
+  { prefix: "/app/drill/invoice", label: "Invoice" },
+  { prefix: "/app/drill/payment", label: "Payment" },
+  { prefix: "/app/drill/journal", label: "Journal entry" },
+  { prefix: "/app/drill/control", label: "Control" },
+  { prefix: "/app/drill/ar_invoice", label: "AR invoice" },
+  { prefix: "/app/drill/sales_order", label: "Sales order" },
+  { prefix: "/app/drill/employee", label: "Employee" },
+  { prefix: "/app/drill/payroll_entry", label: "Payroll entry" },
+  { prefix: "/app/drill/bank_transaction", label: "Bank transaction" },
+  { prefix: "/app/drill/fixed_asset", label: "Fixed asset" },
+  { prefix: "/app/drill/capex_project", label: "Capex project" },
   { prefix: "/app/fs-hub", label: "FS Hub" },
   { prefix: "/app/fs-audit", label: "FS audit" },
   { prefix: "/app/schedule", label: "Schedule" },
@@ -377,15 +480,128 @@ export const ROUTE_LABELS = [
   { prefix: "/app/approvals", label: "Approvals" },
   { prefix: "/app/upload", label: "Upload" },
   { prefix: "/app/auditor", label: "Auditor portal" },
-  { prefix: "/app", label: "App" },
+  { prefix: "/app", label: "Workspace" },
 ];
 
+function shortBreadcrumbRef(segment, maxLen = 22) {
+  if (!segment) return "";
+  const d = decodeURIComponent(segment);
+  return d.length > maxLen ? `${d.slice(0, maxLen)}…` : d;
+}
+
+const EVIDENCE_STATIC_SLUGS = new Set(["evidence-intelligence-dashboard", "document-intelligence"]);
+
+/**
+ * Paths that include dynamic IDs or query-sensitive titles — evaluated before ROUTE_LABELS prefix match.
+ */
+function dynamicBreadcrumbLabel(pathWithOptionalQuery) {
+  const qIdx = pathWithOptionalQuery.indexOf("?");
+  const path = qIdx >= 0 ? pathWithOptionalQuery.slice(0, qIdx) : pathWithOptionalQuery;
+  const query = qIdx >= 0 ? pathWithOptionalQuery.slice(qIdx + 1) : "";
+  const params = new URLSearchParams(query ? `?${query}` : "");
+
+  if (path === "/app/executive-review") {
+    const tab = params.get("tab");
+    if (tab === "assurance") return "Executive review · Continuous assurance";
+    if (tab === "committee") return "Executive review · Committee";
+    if (tab) return `Executive review · ${shortBreadcrumbRef(tab, 24)}`;
+  }
+
+  const kpiLeaf = path.match(/^\/app\/kpi\/([^/]+)$/);
+  if (kpiLeaf) {
+    const raw = kpiLeaf[1].replace(/-/g, " ").replace(/_/g, " ");
+    return `KPI · ${shortBreadcrumbRef(raw, 36)}`;
+  }
+
+  const caseLeaf = path.match(/^\/app\/cases\/([^/]+)$/);
+  if (caseLeaf) return `Case · ${shortBreadcrumbRef(caseLeaf[1])}`;
+
+  const reconLeaf = path.match(/^\/app\/reconciliations\/([^/]+)$/);
+  if (reconLeaf) return `Reconciliation · ${shortBreadcrumbRef(reconLeaf[1])}`;
+
+  const auditLogLeaf = path.match(/^\/app\/audit-log\/([^/]+)$/);
+  if (auditLogLeaf) return `Audit log · ${shortBreadcrumbRef(auditLogLeaf[1])}`;
+
+  const evidenceLeaf = path.match(/^\/app\/evidence\/([^/]+)$/);
+  if (evidenceLeaf && !EVIDENCE_STATIC_SLUGS.has(evidenceLeaf[1])) {
+    return `Evidence · ${shortBreadcrumbRef(evidenceLeaf[1])}`;
+  }
+
+  const engTeam = path.match(/^\/app\/audit-planning\/engagements\/([^/]+)\/team$/);
+  if (engTeam) return `Engagement team · ${shortBreadcrumbRef(engTeam[1])}`;
+  const engRacm = path.match(/^\/app\/audit-planning\/engagements\/([^/]+)\/racm$/);
+  if (engRacm) return `RACM builder · ${shortBreadcrumbRef(engRacm[1])}`;
+  const engFs = path.match(/^\/app\/audit-planning\/engagements\/([^/]+)\/fs-audit$/);
+  if (engFs) return `Financial statement audit · ${shortBreadcrumbRef(engFs[1])}`;
+  const engSch = path.match(/^\/app\/audit-planning\/engagements\/([^/]+)\/schedules-audit$/);
+  if (engSch) return `Schedules audit · ${shortBreadcrumbRef(engSch[1])}`;
+  const engIfc = path.match(/^\/app\/audit-planning\/engagements\/([^/]+)\/ifc-engine$/);
+  if (engIfc) return `IFC engine · ${shortBreadcrumbRef(engIfc[1])}`;
+
+  if (/^\/app\/audit-planning\/engagements\/[^/]+\/working-papers\/sampling$/.test(path)) return "Sampling engine";
+  if (/^\/app\/audit-planning\/engagements\/[^/]+\/working-papers\/vouching$/.test(path)) return "Vouching workbench";
+  const wpPaper = path.match(/^\/app\/audit-planning\/engagements\/([^/]+)\/working-papers\/([^/]+)$/);
+  if (wpPaper && wpPaper[2] !== "sampling" && wpPaper[2] !== "vouching") {
+    return `Working paper · ${shortBreadcrumbRef(wpPaper[2])}`;
+  }
+  if (/^\/app\/audit-planning\/engagements\/[^/]+\/working-papers$/.test(path)) return "Working papers";
+
+  const indiaLeaf = path.match(/^\/app\/audit-planning\/engagements\/([^/]+)\/india-compliance\/([^/]+)$/);
+  if (indiaLeaf) {
+    const leafMap = {
+      "companies-act": "Companies Act",
+      gst: "GST audit",
+      tds: "TDS",
+      "tax-44ab": "Tax 44AB",
+      caro: "CARO",
+      calendar: "Compliance calendar",
+    };
+    return leafMap[indiaLeaf[2]] || `India compliance · ${shortBreadcrumbRef(indiaLeaf[2])}`;
+  }
+  if (/^\/app\/audit-planning\/engagements\/[^/]+\/india-compliance$/.test(path)) return "India compliance";
+
+  const rsLeaf = path.match(/^\/app\/audit-planning\/engagements\/([^/]+)\/report-studio\/([^/]+)$/);
+  if (rsLeaf) {
+    const rsMap = {
+      observations: "Observations builder",
+      opinion: "Audit opinion",
+      caro: "CARO annexure",
+      preview: "Report preview",
+    };
+    return rsMap[rsLeaf[2]] || `Report studio · ${shortBreadcrumbRef(rsLeaf[2])}`;
+  }
+  if (/^\/app\/audit-planning\/engagements\/[^/]+\/report-studio$/.test(path)) return "Report studio";
+
+  const engOnly = path.match(/^\/app\/audit-planning\/engagements\/([^/]+)$/);
+  if (engOnly) return `Engagement · ${shortBreadcrumbRef(engOnly[1])}`;
+
+  return null;
+}
+
 export function labelForPath(pathname) {
+  const dynamic = dynamicBreadcrumbLabel(pathname);
+  if (dynamic) return dynamic;
+
   const path = pathname.split("?")[0];
+  // Special-case: avoid repeating "Drill-down" for nested drill routes like:
+  // /app/drill/<type>/<id> → "User · UA-17" (instead of Drill-down → Drill-down → Drill-down)
+  const m = path.match(/^\/app\/drill\/([^/]+)\/([^/]+)$/);
+  if (m) {
+    const type = decodeURIComponent(m[1] || "");
+    const id = decodeURIComponent(m[2] || "");
+    const prettyType = type
+      .replace(/_/g, " ")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+    const shortId = id.length > 24 ? `${id.slice(0, 24)}…` : id;
+    return `${prettyType} · ${shortId}`;
+  }
   const sorted = [...ROUTE_LABELS].sort((a, b) => b.prefix.length - a.prefix.length);
   for (const row of sorted) {
     if (path === row.prefix || path.startsWith(`${row.prefix}/`)) return row.label;
   }
+  const tail = path.split("/").filter(Boolean).pop();
+  if (tail) return shortBreadcrumbRef(tail.replace(/-/g, " "), 40);
   return "Page";
 }
 
@@ -594,6 +810,18 @@ export const MODULE_HUBS = {
         badge: "Live",
         testId: "hub-card-credit-notes-workbench",
       },
+      {
+        to: "/app/continuous-audit/revenue-audit",
+        title: "Revenue audit (SRS path)",
+        body: "SRS alias — order-to-cash / revenue cycle monitoring (O2C audit workbench).",
+        badge: "Live",
+      },
+      {
+        to: "/app/continuous-audit/credit-note-analytics",
+        title: "Credit note analytics (SRS path)",
+        body: "SRS alias — credit note concentration & reversal signals (credit notes workbench).",
+        badge: "Live",
+      },
       { to: "/app/audit", title: "Controls & tests", body: "Re-run controls and monitor exceptions.", badge: "Live" },
     ],
   },
@@ -694,7 +922,18 @@ export const MODULE_HUBS = {
         badge: "Live",
         testId: "hub-card-legal-workbench",
       },
-      { to: "/app/compliance/notices-litigation", title: "Notices (legacy shell)", body: "Roadmap alias to compliance shell; prefer legal workbench for /legal APIs.", badge: "Live" },
+      {
+        to: "/app/compliance/related-party-transactions",
+        title: "Related party (SRS path)",
+        body: "SRS alias to the RPT workbench — same screen as Related party transactions.",
+        badge: "Live",
+      },
+      {
+        to: "/app/compliance/notices-litigation",
+        title: "Legal notices (SRS path)",
+        body: "SRS alias to the legal & litigation workbench — same screen as Legal notices & litigation.",
+        badge: "Live",
+      },
     ],
   },
   "risk-intelligence": {

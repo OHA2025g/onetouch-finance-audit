@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import { http } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { PenaltyRiskBadge } from "../../components/Badges";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../../components/DataTable";
 
 const STATUSES = ["compliant", "non-compliant", "pending evidence", "not applicable"];
 
 export default function ComplianceReqTable({ engagementId, requirements, lawCodes, onChanged }) {
+  const dashboardParams = useDashboardFilterParams();
   const [busy, setBusy] = useState(null);
   const rows = (requirements || []).filter((r) => {
     if (!lawCodes?.length) return true;
@@ -16,12 +18,16 @@ export default function ComplianceReqTable({ engagementId, requirements, lawCode
   const patch = async (reqId, status, evidence_uri, notes) => {
     setBusy(reqId);
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(engagementId)}/compliance/result`, {
-        requirement_id: reqId,
-        status,
-        evidence_uri: evidence_uri || null,
-        notes: notes || null,
-      });
+      await http.post(
+        `/audit-engagements/${encodeURIComponent(engagementId)}/compliance/result`,
+        {
+          requirement_id: reqId,
+          status,
+          evidence_uri: evidence_uri || null,
+          notes: notes || null,
+        },
+        { params: dashboardParams },
+      );
       toast.success("Requirement updated");
       onChanged?.();
     } catch {

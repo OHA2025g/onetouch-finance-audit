@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_user
 from app.deps import db
+from app.services.rbac_service import enforce_entity_scope
 
 router = APIRouter(prefix="/audit-depth", tags=["audit-depth"])
 
@@ -19,6 +20,7 @@ async def gl_accounts(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity_code"] = entity_code
@@ -36,6 +38,7 @@ async def journal_entries(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code
@@ -52,6 +55,8 @@ async def journal_entry_detail(je_id: str, current=Depends(get_current_user)):
     doc = await db.journals.find_one({"id": je_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Journal entry not found")
+    if doc.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=doc.get("entity"))
     return doc
 
 
@@ -66,6 +71,7 @@ async def recon_list(
 ):
     from app.analytics import _reconciliation_scope
 
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q = _reconciliation_scope(entity_code, period_ym)
     if status:
         q = {**q, "status": status}
@@ -81,6 +87,7 @@ async def bank_activity(
     limit: int = Query(100, ge=1, le=500),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code

@@ -31,6 +31,8 @@ jobs:
           exit 1
       - name: compileall
         run: docker compose exec -T api python -m compileall -q /app/app
+      # L4 HTTP contract tests (e.g. test_phase2_masters_l4_http.py) require REACT_APP_BACKEND_URL; docker-compose sets
+      # it to http://127.0.0.1:8000 on the api service so pytest can call the same container's API.
       - name: pytest
         run: docker compose exec -T api pytest /app/tests -q
       - name: OpenAPI schema
@@ -49,10 +51,12 @@ jobs:
           node-version-file: apps/frontend/.nvmrc
           cache: yarn
           cache-dependency-path: apps/frontend/yarn.lock
-      - name: Install & build
+      - name: Install, lint, test & build
         working-directory: apps/frontend
         run: |
           yarn install --frozen-lockfile
+          yarn lint
+          CI=true yarn test --watchAll=false
           yarn build
 
   e2e-cfo:

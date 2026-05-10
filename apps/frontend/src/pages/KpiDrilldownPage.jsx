@@ -1,35 +1,24 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { http } from "../lib/api";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import { pathForRelatedType } from "../lib/drillPaths";
 
 export default function KpiDrilldownPage() {
   const { kpiId } = useParams();
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId, hrefWithMasterParams } = useMastersFilters();
+  const { entityCode, hrefWithMasterParams } = useMastersFilters();
   const [defRow, setDefRow] = useState(null);
   const [trend, setTrend] = useState(null);
   const [drilldown, setDrilldown] = useState(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
 
-  const dashboardParams = useMemo(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId],
-  );
-
+  const dashboardParams = useDashboardFilterParams();
   const load = useCallback(async () => {
     if (!kpiId) return;
     setLoading(true);

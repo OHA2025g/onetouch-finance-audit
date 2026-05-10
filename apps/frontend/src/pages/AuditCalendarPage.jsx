@@ -5,12 +5,17 @@ import { toast } from "sonner";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import MilestoneTimeline from "../components/ca/MilestoneTimeline";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 export default function AuditCalendarPage() {
+  const dashboardParams = useDashboardFilterParams();
   const [engagements, setEngagements] = useState([]);
   useEffect(() => {
-    http.get("/audit-engagements").then((r) => setEngagements(r.data || [])).catch(() => toast.error("Failed to load"));
-  }, []);
+    http
+      .get("/audit-engagements", { params: dashboardParams })
+      .then((r) => setEngagements(r.data || []))
+      .catch(() => toast.error("Failed to load"));
+  }, [dashboardParams]);
 
   return (
     <PageShell maxWidth="max-w-[1700px]">

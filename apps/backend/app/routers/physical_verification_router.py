@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/physical-verification", tags=["physical-verification"])
@@ -20,6 +21,7 @@ def _now() -> str:
 
 @router.get("/cycles")
 async def pv_cycles(entity_code: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=500), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code
@@ -31,10 +33,13 @@ async def pv_cycles(entity_code: Optional[str] = Query(None), limit: int = Query
 @router.post("/cycles")
 async def pv_create_cycle(body: Dict[str, Any], current=Depends(get_current_user)):
     cid = f"pvc-{__import__('uuid').uuid4().hex[:10]}"
+    ent = await enforce_entity_scope(
+        db, current=current, requested_entity_code=(body.get("entity") or body.get("entity_code"))
+    )
     doc = {
         **body,
         "id": cid,
-        "entity": body.get("entity") or current.get("entity") or "US-HQ",
+        "entity": ent or body.get("entity") or current.get("entity") or "US-HQ",
         "status": body.get("status") or "open",
         "created_at": _now(),
         "created_by": current.get("email"),
@@ -53,6 +58,8 @@ async def pv_upload_count(cycle_id: str, body: Dict[str, Any], current=Depends(g
     cyc = await db.physical_cycles.find_one({"id": cycle_id}, {"_id": 0})
     if not cyc:
         raise HTTPException(404, "Cycle not found")
+    if cyc.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=cyc.get("entity"))
     upl_id = f"pvu-{__import__('uuid').uuid4().hex[:10]}"
     items = body.get("items") or []
     doc = {
@@ -116,12 +123,18 @@ async def _compute_variances(cycle_id: str) -> list[Dict[str, Any]]:
 
 @router.get("/{cycle_id}/variance")
 async def pv_variance(cycle_id: str, current=Depends(get_current_user)):
+    cyc0 = await db.physical_cycles.find_one({"id": cycle_id}, {"_id": 0, "entity": 1})
+    if cyc0 and cyc0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=cyc0.get("entity"))
     items = await _compute_variances(cycle_id)
     return {"items": items, "count": len(items), "as_of": _now()}
 
 
 @router.post("/variance/{variance_id}/reason")
 async def pv_reason(variance_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    v0 = await db.physical_variances.find_one({"id": variance_id}, {"_id": 0, "entity": 1})
+    if v0 and v0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=v0.get("entity"))
     reason = body.get("reason")
     await db.physical_variances.update_one({"id": variance_id}, {"$set": {"reason": reason, "updated_at": _now(), "updated_by": current.get("email")}})
     await audit_log(current["email"], "physical_variance_reason", "physical_variance", variance_id, {"reason": reason})
@@ -130,6 +143,9 @@ async def pv_reason(variance_id: str, body: Dict[str, Any], current=Depends(get_
 
 @router.post("/variance/{variance_id}/approve")
 async def pv_approve(variance_id: str, current=Depends(get_current_user)):
+    v0 = await db.physical_variances.find_one({"id": variance_id}, {"_id": 0, "entity": 1})
+    if v0 and v0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=v0.get("entity"))
     await db.physical_variances.update_one({"id": variance_id}, {"$set": {"approved": True, "approved_at": _now(), "approved_by": current.get("email"), "status": "approved"}})
     await audit_log(current["email"], "physical_variance_approve", "physical_variance", variance_id, {})
     return {"status": "ok", "as_of": _now()}
@@ -140,6 +156,8 @@ async def pv_create_case(variance_id: str, body: Dict[str, Any], current=Depends
     v = await db.physical_variances.find_one({"id": variance_id}, {"_id": 0})
     if not v:
         raise HTTPException(404, "Variance not found")
+    if v.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=v.get("entity"))
     now = _now()
     cid = f"case-pv-{__import__('uuid').uuid4().hex[:10]}"
     ex_id = f"pv-{variance_id}"

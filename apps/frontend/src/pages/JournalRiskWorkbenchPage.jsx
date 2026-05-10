@@ -1,32 +1,19 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
-import { useMastersFilters } from "../lib/MastersFilterContext";
 import { useWorkbenchRowDrill } from "../lib/workbenchDrillNav";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { StatCard } from "../components/StatCard";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
 import { fmtUSD, fmtDate } from "../lib/format";
 
 export default function JournalRiskWorkbenchPage() {
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId } = useMastersFilters();
   const { drillToTarget } = useWorkbenchRowDrill();
   const [d, setD] = useState(null);
 
-  const params = useMemo(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId],
-  );
-
+  const params = useDashboardFilterParams();
   useEffect(() => {
     const jParams = { ...params, limit: 25, offset: 0 };
     Promise.all([http.get("/journals/risk-rules"), http.get("/journals", { params: jParams })])
@@ -60,7 +47,7 @@ export default function JournalRiskWorkbenchPage() {
         />
 
         <MastersFilterStrip className="mb-6" />
-        {entityCode ? (
+        {params.entity_code ? (
           <p className="crt-num mb-4 text-[10px] uppercase tracking-wider text-muted-foreground">
             Journal list is filtered by entity when pinned in masters.
           </p>

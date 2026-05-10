@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { ShieldCheck, Gavel, Trash, Plus } from "@phosphor-icons/react";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 export default function GovernanceConsole() {
+  const dashboardParams = useDashboardFilterParams();
   const [tab, setTab] = useState("retention");
   const [policies, setPolicies] = useState([]);
   const [eligible, setEligible] = useState([]);
@@ -28,18 +30,20 @@ export default function GovernanceConsole() {
   const [auditExportAfterId, setAuditExportAfterId] = useState("");
   const [auditExportDigest, setAuditExportDigest] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const [p, e, h] = await Promise.all([
-      http.get("/retention/policies"),
-      http.get("/retention/eligible"),
-      http.get("/legal-holds", { params: { status: "active" } }),
+      http.get("/retention/policies", { params: dashboardParams }),
+      http.get("/retention/eligible", { params: dashboardParams }),
+      http.get("/legal-holds", { params: { status: "active", ...dashboardParams } }),
     ]);
     setPolicies(p.data);
     setEligible(e.data);
     setHolds(h.data);
-  };
+  }, [dashboardParams]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const applyAuditExportTransportParams = (params) => {
     const kt = auditExportAfterTs.trim();
@@ -199,7 +203,12 @@ export default function GovernanceConsole() {
   const createHold = async () => {
     if (!name.trim() || !reason.trim()) return;
     try {
-      await http.post("/legal-holds/", { name, scope, reason, entity_code: scope === "entity" ? "US-HQ" : null });
+      await http.post("/legal-holds/", {
+        name,
+        scope,
+        reason,
+        entity_code: scope === "entity" ? dashboardParams.entity_code || null : null,
+      });
       toast.success("Legal hold created");
       setName(""); setReason("");
       await load();

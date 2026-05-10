@@ -4,21 +4,23 @@ import { toast } from "sonner";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import { SeverityBadge } from "../components/Badges";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 function countTotal(obj) {
   return Object.values(obj || {}).reduce((a, b) => a + Number(b || 0), 0);
 }
 
 export default function AdminMasterDataQualityPage() {
+  const dashboardParams = useDashboardFilterParams();
   const [summary, setSummary] = useState(null);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const load = () => {
+  const load = React.useCallback(() => {
     setLoading(true);
     Promise.all([
-      http.get("/dq/masters/summary"),
-      http.get("/dq/masters/findings", { params: { limit: 200, offset: 0, status: "open" } }),
+      http.get("/dq/masters/summary", { params: dashboardParams }),
+      http.get("/dq/masters/findings", { params: { limit: 200, offset: 0, status: "open", ...dashboardParams } }),
     ])
       .then(([s, f]) => {
         setSummary(s?.data || null);
@@ -26,11 +28,11 @@ export default function AdminMasterDataQualityPage() {
       })
       .catch((e) => toast.error(e?.response?.data?.detail || "Failed to load master DQ"))
       .finally(() => setLoading(false));
-  };
+  }, [dashboardParams]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const ordered = useMemo(() => {
     const copy = [...(rows || [])];

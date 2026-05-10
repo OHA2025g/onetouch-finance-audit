@@ -13,6 +13,12 @@ from app.core.security import require_roles
 from app.deps import db, audit_log, iso
 from datetime import datetime, timezone
 from app.exports import build_pdf, build_xlsx
+from app.services.rbac_service import (
+    assert_report_entity_scope,
+    assert_super_admin_when_entity_scope_enforced,
+    enforce_entity_scope,
+    report_list_entity_mongo_filter,
+)
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
@@ -72,9 +78,13 @@ async def _next_version(db, template_id: str) -> str:
 
 
 @router.get("/templates")
-async def list_templates(current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin"))):
+async def list_templates(
+    entity_code: Optional[str] = Query(None, description="Legal entity key; enforced when RBAC entity scope is on."),
+    current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
+):
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await _ensure_seed_templates()
-    return {"items": items, "export_formats": EXPORT_FORMATS, "note": "Phase 39 seed library + lightweight generator."}
+    return {"items": items, "export_formats": EXPORT_FORMATS, "note": "Phase 39 seed library + lightweight generator.", "entity_code": eff}
 
 
 @router.post("/templates/{template_id}/signoff")
@@ -83,6 +93,7 @@ async def template_signoff(
     body: Dict[str, Any] = Body(default={}),
     current=Depends(require_roles("CFO", "Super Admin")),
 ):
+    await assert_super_admin_when_entity_scope_enforced(db, current=current)
     await audit_log(
         current["email"],
         "signoff",
@@ -102,14 +113,19 @@ async def template_signoff(
 async def report_versions(
     template_id: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    entity_code: Optional[str] = Query(None, description="Legal entity key; enforced when RBAC entity scope is on."),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if template_id:
         q["template_id"] = template_id
+    extra = await report_list_entity_mongo_filter(db, current=current)
+    if extra:
+        q = {"$and": [q, extra]} if q else dict(extra)
     cur = db.reports.find(q, {"_id": 0, "id": 1, "template_id": 1, "version": 1, "generated_at": 1, "status": 1}).sort("generated_at", -1).limit(limit)
     items = [r async for r in cur]
-    return {"items": items, "count": len(items)}
+    return {"items": items, "count": len(items), "entity_code": eff}
 
 
 @router.post("/generate")
@@ -127,7 +143,13 @@ async def generate_report(
     requested_format = (body.get("format") or tpl.get("default_format") or "pdf").lower()
     if requested_format not in EXPORT_FORMATS:
         raise HTTPException(400, f"format must be one of: {', '.join(EXPORT_FORMATS)}")
-    filters_applied = body.get("filters") or {}
+    filters_applied = dict(body.get("filters") or {})
+    req_ec = filters_applied.get("entity_code") or body.get("entity_code")
+    resolved = await enforce_entity_scope(db, current=current, requested_entity_code=req_ec)
+    if resolved is not None:
+        filters_applied["entity_code"] = resolved
+    elif req_ec:
+        filters_applied["entity_code"] = req_ec
 
     rid = f"rep-{uuid.uuid4().hex[:10]}"
     now = iso(datetime.now(timezone.utc))
@@ -158,6 +180,7 @@ async def get_report(
     r = await db.reports.find_one({"id": report_id}, {"_id": 0})
     if not r:
         raise HTTPException(404, "Report not found")
+    await assert_report_entity_scope(db, current=current, report=r)
     return r
 
 
@@ -170,6 +193,12 @@ async def signoff_report(
     r = await db.reports.find_one({"id": report_id}, {"_id": 0})
     if not r:
         raise HTTPException(404, "Report not found")
+    await assert_report_entity_scope(db, current=current, report=r)
+    if not r.get("last_export_at") and not bool(body.get("skip_export_prerequisite")):
+        raise HTTPException(
+            409,
+            "Export the report at least once before sign-off, or pass skip_export_prerequisite for a controlled waiver.",
+        )
     now = iso(datetime.now(timezone.utc))
     await db.reports.update_one(
         {"id": report_id},
@@ -188,18 +217,28 @@ async def export_report(
     r = await db.reports.find_one({"id": report_id}, {"_id": 0})
     if not r:
         raise HTTPException(404, "Report not found")
+    await assert_report_entity_scope(db, current=current, report=r)
     fmt = (body.get("format") or r.get("format") or "pdf").lower()
     if fmt not in EXPORT_FORMATS:
         raise HTTPException(400, f"format must be one of: {', '.join(EXPORT_FORMATS)}")
 
     filters_applied = r.get("filters") or {}
-    entity_code = filters_applied.get("entity_code")
+    if not isinstance(filters_applied, dict):
+        filters_applied = {}
+    entity_code = await enforce_entity_scope(
+        db, current=current, requested_entity_code=filters_applied.get("entity_code")
+    )
     period_ym = filters_applied.get("period_ym")
     department_id = filters_applied.get("department_id")
     cost_center_id = filters_applied.get("cost_center_id")
 
+    now_exp = iso(datetime.now(timezone.utc))
     if fmt == "pdf":
         pdf = await build_pdf(db, entity_code=entity_code, period_ym=period_ym, department_id=department_id, cost_center_id=cost_center_id)
+        await db.reports.update_one(
+            {"id": report_id},
+            {"$set": {"last_export_at": now_exp, "last_export_format": "pdf"}},
+        )
         await audit_log(current["email"], "report_export_pdf", "report", report_id, {"template_id": r.get("template_id"), "version": r.get("version")})
         return StreamingResponse(
             _io_bytes(pdf),
@@ -209,6 +248,10 @@ async def export_report(
 
     if fmt == "xlsx":
         xlsx = await build_xlsx(db, entity_code=entity_code, period_ym=period_ym, department_id=department_id, cost_center_id=cost_center_id)
+        await db.reports.update_one(
+            {"id": report_id},
+            {"$set": {"last_export_at": now_exp, "last_export_format": "xlsx"}},
+        )
         await audit_log(current["email"], "report_export_xlsx", "report", report_id, {"template_id": r.get("template_id"), "version": r.get("version")})
         return StreamingResponse(
             _io_bytes(xlsx),
@@ -223,6 +266,10 @@ async def export_report(
         f"Version: {r.get('version')}\n"
         "Note: PPTX generator is a placeholder in this build.\n"
     ).encode("utf-8")
+    await db.reports.update_one(
+        {"id": report_id},
+        {"$set": {"last_export_at": now_exp, "last_export_format": "pptx"}},
+    )
     await audit_log(current["email"], "report_export_pptx", "report", report_id, {"template_id": r.get("template_id"), "version": r.get("version")})
     return StreamingResponse(
         _io_bytes(payload),

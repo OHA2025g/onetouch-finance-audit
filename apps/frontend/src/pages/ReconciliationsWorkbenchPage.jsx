@@ -1,32 +1,21 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { StatCard } from "../components/StatCard";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
 import { fmtUSD, fmtDate } from "../lib/format";
 
 export default function ReconciliationsWorkbenchPage() {
   const navigate = useNavigate();
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId, hrefWithMasterParams } = useMastersFilters();
+  const { hrefWithMasterParams } = useMastersFilters();
   const [items, setItems] = useState(null);
 
-  const params = useMemo(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId],
-  );
-
+  const params = useDashboardFilterParams();
   useEffect(() => {
     const qp = { ...params, limit: 50, offset: 0 };
     http

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { SectionCard } from "../components/PageShell";
 import { Folder, FileText, Plus } from "@phosphor-icons/react";
 
@@ -25,6 +26,7 @@ function sortFolders(folders) {
 
 export default function WorkingPapersHubPage() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const [folders, setFolders] = useState([]);
   const [papers, setPapers] = useState([]);
@@ -35,12 +37,12 @@ export default function WorkingPapersHubPage() {
   const [newRefs, setNewRefs] = useState("");
 
   const load = useCallback(async () => {
-    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/working-papers`);
+    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/working-papers`, { params: dashboardParams });
     const f = sortFolders(data.folders || []);
     setFolders(f);
     setPapers(data.working_papers || []);
     setSelectedFolderId((prev) => prev || f[0]?.id || null);
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     if (!eid) return;
@@ -56,7 +58,7 @@ export default function WorkingPapersHubPage() {
 
   const ensureFolders = async () => {
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/working-papers/folders`);
+      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/working-papers/folders`, {}, { params: dashboardParams });
       await load();
       toast.success("Folders ready");
     } catch {
@@ -77,17 +79,21 @@ export default function WorkingPapersHubPage() {
     });
     setCreating(true);
     try {
-      await http.post("/working-papers", {
-        engagement_id: eid,
-        folder_id: selectedFolderId,
-        title: newTitle.trim(),
-        body: newBody.trim() || null,
-        references,
-        linked_risk_ids: [],
-        linked_control_ids: [],
-        linked_case_ids: [],
-        evidence_ids: [],
-      });
+      await http.post(
+        "/working-papers",
+        {
+          engagement_id: eid,
+          folder_id: selectedFolderId,
+          title: newTitle.trim(),
+          body: newBody.trim() || null,
+          references,
+          linked_risk_ids: [],
+          linked_control_ids: [],
+          linked_case_ids: [],
+          evidence_ids: [],
+        },
+        { params: dashboardParams },
+      );
       setNewTitle("");
       setNewBody("");
       setNewRefs("");

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { http } from "../lib/api";
 import { StatCard } from "../components/StatCard";
 import { SeverityBadge } from "../components/Badges";
@@ -7,25 +7,12 @@ import { toast } from "sonner";
 import { FileXls, FilePdf, Eye } from "@phosphor-icons/react";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
-import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 
 export default function AuditorPortal() {
   const [d, setD] = useState(null);
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId } = useMastersFilters();
-
-  const dashboardParams = useMemo(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId],
-  );
+  const dashboardParams = useDashboardFilterParams();
 
   useEffect(() => {
     http

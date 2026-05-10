@@ -265,10 +265,13 @@ async def recompute_findings(db, *, limit_per_type: int = 50_000) -> Dict[str, A
     }
 
 
-async def summary(db) -> Dict[str, Any]:
+async def summary(db, *, entity_code: Optional[str] = None) -> Dict[str, Any]:
     """Counts by severity + master_type for open findings."""
+    match: Dict[str, Any] = {"status": "open"}
+    if entity_code:
+        match["entity_code"] = entity_code
     pipeline = [
-        {"$match": {"status": "open"}},
+        {"$match": match},
         {"$group": {"_id": {"severity": "$severity", "master_type": "$master_type"}, "count": {"$sum": 1}}},
     ]
     rows = [r async for r in db.master_data_quality_findings.aggregate(pipeline)]

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
@@ -6,32 +6,38 @@ import { TreeStructure, ArrowsClockwise } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 export default function EntityRollup() {
+  const dashboardParams = useDashboardFilterParams();
   const [data, setData] = useState(null);
   const [drill, setDrill] = useState(null);
   const [nodeId, setNodeId] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
-      const { data: d } = await http.get("/rollups/hierarchy");
+      const { data: d } = await http.get("/rollups/hierarchy", { params: dashboardParams });
       const root = d?.root || d?.node || null;
       const normalized = root ? { ...d, root } : d;
       setData(normalized);
-      if (root?.id && !nodeId) setNodeId(root.id);
+      setNodeId((curr) => (curr ? curr : (root?.id || null)));
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Failed to load rollup hierarchy");
       setData(null);
     }
-  };
+  }, [dashboardParams]);
 
-  useEffect(() => { load(); }, []); // eslint-disable-line
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const drillAt = async (nid, proc = null) => {
     setBusy(true);
     try {
-      const q = proc ? { node_id: nid, process: proc } : { node_id: nid };
+      const q = proc
+        ? { node_id: nid, process: proc, ...dashboardParams }
+        : { node_id: nid, ...dashboardParams };
       const { data: d } = await http.get("/rollups/drilldown", { params: q });
       setDrill(d);
       setNodeId(nid);

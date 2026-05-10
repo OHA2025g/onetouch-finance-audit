@@ -3,34 +3,21 @@ import { http } from "../lib/api";
 import { toast } from "sonner";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
-import { useMastersFilters } from "../lib/MastersFilterContext";
 import { drillTargetMdqFinding, useWorkbenchRowDrill } from "../lib/workbenchDrillNav";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { StatCard } from "../components/StatCard";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
 
 export default function MasterDataQualityWorkbenchPage() {
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId } = useMastersFilters();
   const { drillToTarget } = useWorkbenchRowDrill();
   const [d, setD] = useState(null);
 
-  const params = useMemo(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId],
-  );
-
+  const params = useDashboardFilterParams();
   const countParams = useMemo(() => ({ ...params, limit: 1, offset: 0 }), [params]);
 
   useEffect(() => {
     Promise.all([
-      http.get("/master-data-quality/summary"),
+      http.get("/master-data-quality/summary", { params }),
       http.get("/master-data-quality/vendors", { params: countParams }),
       http.get("/master-data-quality/customers", { params: countParams }),
       http.get("/master-data-quality/employees", { params: countParams }),

@@ -65,6 +65,9 @@ class TestReconciliationsContracts:
         ev = requests.post(f"{API}/reconciliations/{rid}/evidence", headers=_h(token), json={"type": "link", "url": "https://example.com", "notes": "QA"}, timeout=30)
         assert ev.status_code == 200, ev.text
 
+        ap_early = requests.post(f"{API}/reconciliations/{rid}/approve", headers=_h(token), timeout=30)
+        assert ap_early.status_code == 409, ap_early.text
+
         sb = requests.post(f"{API}/reconciliations/{rid}/submit", headers=_h(token), timeout=30)
         assert sb.status_code == 200, sb.text
 

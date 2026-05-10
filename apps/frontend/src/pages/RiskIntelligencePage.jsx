@@ -10,7 +10,7 @@ import { fmtUSD, fmtPct } from "../lib/format";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import ReadinessHeatmap from "../components/ReadinessHeatmap";
 import InsightPanel from "../components/InsightPanel";
 
@@ -29,14 +29,7 @@ export default function RiskIntelligencePage() {
   const [exporting, setExporting] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const processFilter = (searchParams.get("process") || "").trim() || "all";
-  const {
-    entityCode,
-    periodYm,
-    periodExplicit,
-    departmentId,
-    costCenterId,
-    hrefWithMasterParams,
-  } = useMastersFilters();
+  const { hrefWithMasterParams } = useMastersFilters();
   const nav = useNavigate();
   const location = useLocation();
   const firstLoadRef = useRef(true);
@@ -51,17 +44,7 @@ export default function RiskIntelligencePage() {
     }
   }, [location.pathname, location.search]);
 
-  const dashboardParams = useMemo(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId],
-  );
+  const dashboardParams = useDashboardFilterParams();
 
   const load = useCallback(async () => {
     if (firstLoadRef.current) setLoading(true);

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from app.core.security import require_roles
 from app.deps import db
 from app.services import finance_team_service as fts
+from app.services.rbac_service import enforce_entity_scope
 
 router = APIRouter(prefix="/finance-team", tags=["finance-team"])
 
@@ -21,6 +22,7 @@ async def finance_team_summary(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await fts.finance_team_dashboard(
         db,
         entity_code=entity_code,
@@ -35,6 +37,7 @@ async def finance_team_workload(
     entity_code: Optional[str] = Query(None),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await fts.finance_team_workload(db, entity_code=entity_code)
 
 

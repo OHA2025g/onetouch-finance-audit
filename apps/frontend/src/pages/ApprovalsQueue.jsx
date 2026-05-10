@@ -1,20 +1,24 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { CheckCircle, XCircle, Clock } from "@phosphor-icons/react";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 export default function ApprovalsQueue() {
+  const dashboardParams = useDashboardFilterParams();
   const [items, setItems] = useState([]);
   const [status, setStatus] = useState("pending");
 
-  const load = async () => {
-    const { data } = await http.get("/governance/approvals", { params: { status } });
+  const load = useCallback(async () => {
+    const { data } = await http.get("/governance/approvals", { params: { status, ...dashboardParams } });
     setItems(data);
-  };
+  }, [status, dashboardParams]);
 
-  useEffect(() => { load(); }, [status]); // eslint-disable-line
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const decide = async (id, decision) => {
     try {

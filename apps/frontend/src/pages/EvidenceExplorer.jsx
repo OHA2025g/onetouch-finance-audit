@@ -11,8 +11,7 @@ import DrillContextBar from "../components/DrillContextBar";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import { graphNodeDrillPath } from "../lib/drillPaths";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
-import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 
 const LIST_PAGE = 120;
@@ -39,19 +38,8 @@ export default function EvidenceExplorer() {
   const [query, setQuery] = useState("");
   const [graph, setGraph] = useState(null);
   const [view, setView] = useState("graph");
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId } = useMastersFilters();
 
-  const scopeParams = useMemo(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId]
-  );
+  const scopeParams = useDashboardFilterParams();
 
   const loadMore = useCallback(async () => {
     if (listLoading || totalCount == null || nextOffset >= totalCount) return;
@@ -108,6 +96,8 @@ export default function EvidenceExplorer() {
       .catch((err) => {
         if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") return;
         setGraph(null);
+        const detail = err?.response?.data?.detail || err?.message || "Unknown error";
+        toast.error(`Evidence graph failed to load: ${detail}`);
       });
     return () => ac.abort();
   }, [exceptionId]);
@@ -345,16 +335,23 @@ function GraphView({ graph }) {
       {/* Nodes */}
       {nodes.map((n) => {
         const p = positions[n.id];
+        if (!p) return null;
         const stroke = NODE_STROKE[n.type] || "#71717a";
         const path = graphNodeDrillPath(n);
+        const onDrill = (e) => {
+          if (!path) return;
+          e.preventDefault();
+          e.stopPropagation();
+          nav(path);
+        };
         return (
           <g
             key={n.id}
             transform={`translate(${p.x}, ${p.y})`}
             style={{ cursor: path ? "pointer" : "default" }}
-            onClick={() => path && nav(path)}
             data-testid={`graph-node-${n.type}-${n.id.slice(0, 12)}`}
           >
+            {/* Hit target on rect; text uses pointer-events:none so label clicks still drill */}
             <rect
               x="-80"
               y="-28"
@@ -363,6 +360,15 @@ function GraphView({ graph }) {
               className="fill-white dark:fill-zinc-900"
               stroke={stroke}
               strokeWidth="1.5"
+              onClick={onDrill}
+              onKeyDown={(e) => {
+                if (!path) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  onDrill(e);
+                }
+              }}
+              role={path ? "button" : undefined}
+              tabIndex={path ? 0 : undefined}
             />
             <text
               x="0"
@@ -371,7 +377,7 @@ function GraphView({ graph }) {
               fontSize="9"
               fontFamily="JetBrains Mono, ui-monospace, monospace"
               textAnchor="middle"
-              style={{ textTransform: "uppercase", letterSpacing: "0.1em" }}
+              style={{ textTransform: "uppercase", letterSpacing: "0.1em", pointerEvents: "none" }}
             >
               {n.type}
             </text>
@@ -382,6 +388,7 @@ function GraphView({ graph }) {
               fontSize="11"
               fontFamily="IBM Plex Sans, system-ui, sans-serif"
               textAnchor="middle"
+              style={{ pointerEvents: "none" }}
             >
               {truncate(n.label, 22)}
             </text>
@@ -393,6 +400,7 @@ function GraphView({ graph }) {
                 fontSize="9"
                 fontFamily="IBM Plex Sans, system-ui, sans-serif"
                 textAnchor="middle"
+                style={{ pointerEvents: "none" }}
               >
                 {truncate(n.subtitle, 26)}
               </text>

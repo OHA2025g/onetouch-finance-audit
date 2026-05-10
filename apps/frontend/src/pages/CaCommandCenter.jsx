@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 
 const DEMO = "ENG-DEMO-IN-2025";
 
 export default function CaCommandCenter() {
+  const dashboardParams = useDashboardFilterParams();
   const [params] = useSearchParams();
   const eid = params.get("engagement_id") || DEMO;
   const [dash, setDash] = useState(null);
@@ -25,11 +27,11 @@ export default function CaCommandCenter() {
       setLoading(true);
       setError(null);
       try {
-        const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/ca-dashboard`);
+        const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/ca-dashboard`, { params: dashboardParams });
         if (!cancelled) setDash(data);
       } catch {
         try {
-          const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/ca-command-center`);
+          const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/ca-command-center`, { params: dashboardParams });
           if (!cancelled) {
             setDash(null);
             setFallbackTiles(data);
@@ -45,7 +47,7 @@ export default function CaCommandCenter() {
       }
     })();
     return () => { cancelled = true; };
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   const tiles = dash?.tiles || fallbackTiles?.tiles;
   const scores = dash?.scores;

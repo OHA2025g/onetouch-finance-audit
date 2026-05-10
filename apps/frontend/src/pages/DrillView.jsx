@@ -43,7 +43,7 @@ function headerTitle(type, p, id) {
   if (type === "payment") return p.bank_reference;
   if (type === "journal") return p.journal_number;
   if (type === "vendor") return p.vendor_name;
-  if (type === "user") return p.full_name || p.email;
+  if (type === "user") return (p.full_name && p.full_name !== "Unknown" ? p.full_name : null) || p.email || id;
   if (type === "control") return `${p.code} · ${p.name}`;
   if (type === "customer") return p.customer_name;
   if (type === "ar_invoice") return p.ar_number;
@@ -61,7 +61,7 @@ function headerSubtitle(type, p) {
   if (type === "payment") return `${p.vendor_name} · ${p.entity} · ${fmtDate(p.payment_date)}`;
   if (type === "journal") return `${p.entity} · ${p.description} · posted ${fmtDate(p.posting_date)}`;
   if (type === "vendor") return `${p.entity} · ${p.status} · vendor code ${p.vendor_code}`;
-  if (type === "user") return `${p.role} · ${p.entity || "—"} · ${p.status || "—"}`;
+  if (type === "user") return `${p.role ?? "—"} · ${p.entity ?? "—"} · ${p.status ?? "—"}`;
   if (type === "control") return `${p.process} · ${p.criticality} · ${p.framework}`;
   if (type === "customer") return `${p.entity} · ${p.status} · terms net ${p.payment_terms_days}d · limit ${fmtUSD(p.credit_limit)}`;
   if (type === "ar_invoice") return `${p.customer_name} · ${p.entity} · ${fmtDate(p.invoice_date)} · due ${fmtDate(p.due_date)}`;

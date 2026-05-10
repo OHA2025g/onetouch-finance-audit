@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { http } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { SectionCard } from "../PageShell";
 
 const STATUSES = ["draft", "planned", "in-progress", "completed", "archived"];
@@ -11,6 +12,7 @@ const RISKS = ["low", "medium", "high", "critical"];
  * Edit core planning fields, add milestones / planning notes (parent engagement for all CA modules).
  */
 export default function AuditPlanningPanel({ engagementId, engagement, onSaved }) {
+  const dashboardParams = useDashboardFilterParams();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(null);
   const [msTitle, setMsTitle] = useState("");
@@ -46,25 +48,29 @@ export default function AuditPlanningPanel({ engagementId, engagement, onSaved }
     setSaving(true);
     try {
       const objectives = form.audit_objectives.split("\n").map((s) => s.trim()).filter(Boolean);
-      await http.put(`/audit-engagements/${encodeURIComponent(engagementId)}`, {
-        entity_name: form.entity_name,
-        financial_year: form.financial_year,
-        audit_type: form.audit_type,
-        audit_scope: form.audit_scope,
-        audit_objectives: objectives,
-        start_date: form.start_date,
-        end_date: form.end_date,
-        audit_partner: form.audit_partner,
-        audit_manager: form.audit_manager,
-        status: form.status,
-        risk_level: form.risk_level,
-        timeline: {
-          planning_start: form.tl_planning || null,
-          fieldwork_start: form.tl_field_start || null,
-          fieldwork_end: form.tl_field_end || null,
-          reporting_date: form.tl_reporting || null,
+      await http.put(
+        `/audit-engagements/${encodeURIComponent(engagementId)}`,
+        {
+          entity_name: form.entity_name,
+          financial_year: form.financial_year,
+          audit_type: form.audit_type,
+          audit_scope: form.audit_scope,
+          audit_objectives: objectives,
+          start_date: form.start_date,
+          end_date: form.end_date,
+          audit_partner: form.audit_partner,
+          audit_manager: form.audit_manager,
+          status: form.status,
+          risk_level: form.risk_level,
+          timeline: {
+            planning_start: form.tl_planning || null,
+            fieldwork_start: form.tl_field_start || null,
+            fieldwork_end: form.tl_field_end || null,
+            reporting_date: form.tl_reporting || null,
+          },
         },
-      });
+        { params: dashboardParams },
+      );
       toast.success("Planning saved");
       onSaved?.();
     } catch (err) {
@@ -80,11 +86,15 @@ export default function AuditPlanningPanel({ engagementId, engagement, onSaved }
       return;
     }
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(engagementId)}/milestones`, {
-        title: msTitle.trim(),
-        due_date: msDue.trim(),
-        status: "pending",
-      });
+      await http.post(
+        `/audit-engagements/${encodeURIComponent(engagementId)}/milestones`,
+        {
+          title: msTitle.trim(),
+          due_date: msDue.trim(),
+          status: "pending",
+        },
+        { params: dashboardParams },
+      );
       setMsTitle("");
       setMsDue("");
       toast.success("Milestone added");
@@ -98,10 +108,14 @@ export default function AuditPlanningPanel({ engagementId, engagement, onSaved }
     ev.preventDefault();
     if (!note.trim()) return;
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(engagementId)}/planning-notes`, {
-        note: note.trim(),
-        visibility: "team",
-      });
+      await http.post(
+        `/audit-engagements/${encodeURIComponent(engagementId)}/planning-notes`,
+        {
+          note: note.trim(),
+          visibility: "team",
+        },
+        { params: dashboardParams },
+      );
       setNote("");
       toast.success("Note added");
       onSaved?.();

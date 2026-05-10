@@ -82,7 +82,12 @@ class TestBankReconContracts:
         )
         assert cl.status_code == 200, cl.text
 
-        so = requests.post(f"{API}/bank-recon/{st_id}/signoff", headers=_h(token), json={"notes": "QA signoff"}, timeout=30)
+        so = requests.post(
+            f"{API}/bank-recon/{st_id}/signoff",
+            headers=_h(token),
+            json={"notes": "QA signoff", "acknowledge_residual_exceptions": True},
+            timeout=30,
+        )
         assert so.status_code == 200, so.text
         assert so.json().get("status") == "ok"
 

@@ -1,34 +1,21 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
-import { useMastersFilters } from "../lib/MastersFilterContext";
 import { drillTargetEvidenceQiRow, useWorkbenchRowDrill } from "../lib/workbenchDrillNav";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { StatCard } from "../components/StatCard";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
 
 export default function EvidenceIntelligenceWorkbenchPage() {
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId } = useMastersFilters();
   const { drillToTarget } = useWorkbenchRowDrill();
   const [searchParams] = useSearchParams();
   const documentHighlight = (searchParams.get("document") || "").trim();
   const [d, setD] = useState(null);
 
-  const params = useMemo(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId],
-  );
-
+  const params = useDashboardFilterParams();
   useEffect(() => {
     Promise.all([
       http.get("/evidence-intelligence/quality-issues", { params: { ...params, status: "open", limit: 500, offset: 0 } }),

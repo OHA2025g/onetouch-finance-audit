@@ -80,7 +80,7 @@ export default function UserDrill({ data, nav }) {
           </tr>
         </DataTableHead>
         <DataTableBody>
-          {data.journals_posted.map(j => (
+          {(data.journals_posted || []).map(j => (
             <DataTableRow key={j.id} onClick={() => nav(`/app/drill/journal/${j.id}`)}>
               <DataTableTd className="font-mono text-xs text-primary">{j.journal_number}</DataTableTd>
               <DataTableTd className="font-mono text-xs text-foreground">{fmtDate(j.posting_date)}</DataTableTd>

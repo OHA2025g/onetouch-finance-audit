@@ -13,7 +13,7 @@ from app.deps import client, db, logger, iso
 from app.notifier import get_settings as get_notif_settings, scan_sla_breaches, send_daily_brief
 from app.phase2 import seed_phase2
 from app.seed import seed_database
-from app.ca_audit_seed import seed_ca_audit_if_empty
+from app.ca_audit_seed import repair_demo_audit_engagement_entity_codes, seed_ca_audit_if_empty
 from app.services.ca_synthetic_audit_bundle import ensure_synthetic_audit_bundle
 from app.services.case_service import case_from_exception
 from app.governance.ensure_baseline import ensure_governance_baseline
@@ -26,6 +26,14 @@ scheduler: Optional[AsyncIOScheduler] = None
 async def on_startup() -> None:
     global scheduler  # noqa: PLW0603 — module-level AsyncIOScheduler for graceful shutdown
 
+    try:
+        from app.db_indexes import ensure_workflow_indexes
+
+        await ensure_workflow_indexes(db)
+        logger.info("Workflow Mongo indexes ensured")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Workflow indexes skipped: %s", e)
+
     # 1) Phase 1 seed (idempotent)
     res = await seed_database(db, force=False)
     logger.info("Seed result: %s", res)
@@ -35,6 +43,12 @@ async def on_startup() -> None:
             logger.info("CA audit demo seeded: %s", ca.get("engagement_id"))
     except Exception as e:  # noqa: BLE001
         logger.warning("CA audit seed skipped: %s", e)
+    try:
+        rep = await repair_demo_audit_engagement_entity_codes(db)
+        if rep.get("engagement_ids"):
+            logger.info("CA audit demo entity_code repair: %s", rep.get("engagement_ids"))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("CA audit entity_code repair skipped: %s", e)
     try:
         bundle = await ensure_synthetic_audit_bundle(db)
         if bundle.get("actions"):
@@ -66,6 +80,17 @@ async def on_startup() -> None:
             logger.info("Org backfill: %s", org)
     except Exception as e:  # noqa: BLE001
         logger.warning("Org backfill skipped: %s", e)
+
+    # Full-app evaluation overlay (connectors, close, FP&A variances, legal/RPT/CA seeds, action queue).
+    # Set SKIP_DEMO_OVERLAY=1 to disable. seed_database() alone only runs on empty users — this fills gaps on warm DBs.
+    try:
+        from app.services.application_demo_seed import ensure_application_demo_overlay
+
+        demo = await ensure_application_demo_overlay(db)
+        if demo.get("status") != "skipped":
+            logger.info("Application demo overlay: %s", demo)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Application demo overlay skipped: %s", e)
 
     # 2) Phase 2 seed (opt-in; keep baseline dataset stable unless explicitly enabled)
     if os.environ.get("ENABLE_PHASE2", "").lower() in ("1", "true", "yes", "on"):

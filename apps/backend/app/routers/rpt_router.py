@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/rpt", tags=["rpt"])
@@ -91,6 +92,7 @@ async def _ensure_seed_rpt(entity_code: Optional[str] = None) -> Dict[str, int]:
 
 @router.get("/related-parties")
 async def rpt_related_parties(entity_code: Optional[str] = Query(None), q: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=2000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_rpt(entity_code=entity_code)
     filt: Dict[str, Any] = {}
     if entity_code:
@@ -107,9 +109,11 @@ async def rpt_related_parties(entity_code: Optional[str] = Query(None), q: Optio
 @router.post("/related-parties")
 async def rpt_related_party_create(body: Dict[str, Any], current=Depends(get_current_user)):
     rid = f"RP-{__import__('uuid').uuid4().hex[:10]}"
+    ent = str(body.get("entity") or body.get("entity_code") or "US-HQ")
+    ent = await enforce_entity_scope(db, current=current, requested_entity_code=ent)
     doc = {
         "id": rid,
-        "entity": body.get("entity") or "US-HQ",
+        "entity": ent,
         "name": body.get("name") or "Related Party",
         "relationship": body.get("relationship") or "associate",
         "pan": body.get("pan"),
@@ -126,6 +130,7 @@ async def rpt_related_party_create(body: Dict[str, Any], current=Depends(get_cur
 
 @router.get("/transactions")
 async def rpt_transactions(entity_code: Optional[str] = Query(None), related_party_id: Optional[str] = Query(None), approval_status: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=5000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_rpt(entity_code=entity_code)
     filt: Dict[str, Any] = {}
     if entity_code:
@@ -147,9 +152,11 @@ async def rpt_transaction_create(body: Dict[str, Any], current=Depends(get_curre
     if body.get("related_party_id"):
         rp = await db.related_parties.find_one({"id": body["related_party_id"]}, {"_id": 0})
     amount = float(body.get("amount") or 0.0)
+    resolved_ent = body.get("entity") or (rp.get("entity") if rp else "US-HQ")
+    resolved_ent = await enforce_entity_scope(db, current=current, requested_entity_code=str(resolved_ent))
     doc = {
         "id": tid,
-        "entity": body.get("entity") or (rp.get("entity") if rp else "US-HQ"),
+        "entity": resolved_ent,
         "related_party_id": body.get("related_party_id") or (rp.get("id") if rp else None),
         "related_party_name": body.get("related_party_name") or (rp.get("name") if rp else "Related Party"),
         "transaction_type": body.get("transaction_type") or "service",
@@ -174,6 +181,11 @@ async def rpt_transaction_create(body: Dict[str, Any], current=Depends(get_curre
 
 @router.post("/transactions/{transaction_id}/approval")
 async def rpt_transaction_approval(transaction_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    txn0 = await db.rpt_transactions.find_one({"id": transaction_id}, {"_id": 0, "entity": 1})
+    if not txn0:
+        raise HTTPException(404, "Transaction not found")
+    if txn0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=txn0.get("entity"))
     decision = str(body.get("decision") or body.get("status") or "approved")
     if decision not in {"approved", "rejected", "pending"}:
         raise HTTPException(400, "Invalid approval decision")
@@ -191,6 +203,11 @@ async def rpt_transaction_approval(transaction_id: str, body: Dict[str, Any], cu
 
 @router.post("/transactions/{transaction_id}/document")
 async def rpt_transaction_document(transaction_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    txn0 = await db.rpt_transactions.find_one({"id": transaction_id}, {"_id": 0, "entity": 1})
+    if not txn0:
+        raise HTTPException(404, "Transaction not found")
+    if txn0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=txn0.get("entity"))
     doc_id = f"rptdoc-{__import__('uuid').uuid4().hex[:10]}"
     item = {
         "id": doc_id,
@@ -212,6 +229,7 @@ async def rpt_transaction_document(transaction_id: str, body: Dict[str, Any], cu
 
 @router.get("/outstanding-balances")
 async def rpt_outstanding_balances(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_rpt(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -241,6 +259,7 @@ async def rpt_outstanding_balances(entity_code: Optional[str] = Query(None), cur
 
 @router.get("/disclosure-checklist")
 async def rpt_disclosure_checklist(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_rpt(entity_code=entity_code)
     tx = await rpt_transactions(entity_code=entity_code, related_party_id=None, approval_status=None, limit=5000, offset=0, current=current)
     items = tx.get("items") or []
@@ -258,6 +277,7 @@ async def rpt_disclosure_checklist(entity_code: Optional[str] = Query(None), cur
 
 @router.get("/audit-committee-report")
 async def rpt_audit_committee_report(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_rpt(entity_code=entity_code)
     parties = await db.related_parties.count_documents({"entity": entity_code} if entity_code else {})
     tx = await rpt_transactions(entity_code=entity_code, related_party_id=None, approval_status=None, limit=5000, offset=0, current=current)

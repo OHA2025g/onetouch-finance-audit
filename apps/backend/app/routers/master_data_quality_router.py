@@ -11,30 +11,47 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_user
+from app.core.entity_scope import entity_scope_enforced
 from app.deps import audit_log, db
 from app.services import master_dq_service as mdq
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import assert_master_dq_finding_entity_scope, enforce_entity_scope
 
 
 router = APIRouter(prefix="/master-data-quality", tags=["master-data-quality"])
 
 
-async def _ensure_findings() -> Dict[str, Any]:
-    """Ensure DQ findings exist (seed-friendly)."""
+async def _ensure_findings(current: dict) -> Dict[str, Any]:
+    """Ensure DQ findings exist (seed-friendly).
+
+    When RBAC entity scope is enforced, only Super Admin may trigger a full recompute from read paths;
+    other roles see empty aggregates until an operator or seed job populates findings.
+    """
     if await db.master_data_quality_findings.count_documents({}) > 0:
         return {"status": "already_present"}
+    if await entity_scope_enforced(db) and current.get("role") != "Super Admin":
+        return {"status": "skipped_requires_superadmin_when_entity_scope_on"}
     return await mdq.recompute_findings(db, limit_per_type=50_000)
 
 
 @router.get("/summary")
-async def mdq_summary(current=Depends(get_current_user)):
-    await _ensure_findings()
-    return await mdq.summary(db)
+async def mdq_summary(
+    entity_code: Optional[str] = Query(None),
+    current=Depends(get_current_user),
+):
+    await _ensure_findings(current)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    out = await mdq.summary(db, entity_code=eff or None)
+    if eff:
+        out["entity_scope_applied"] = True
+        out["entity_codes"] = [eff]
+    return out
 
 
 @router.get("/vendors")
 async def mdq_vendors(entity_code: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
-    await _ensure_findings()
+    await _ensure_findings(current)
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {"master_type": "vendor", "status": "open"}
     if entity_code:
         q["entity_code"] = entity_code
@@ -46,7 +63,8 @@ async def mdq_vendors(entity_code: Optional[str] = Query(None), limit: int = Que
 
 @router.get("/customers")
 async def mdq_customers(entity_code: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
-    await _ensure_findings()
+    await _ensure_findings(current)
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {"master_type": "customer", "status": "open"}
     if entity_code:
         q["entity_code"] = entity_code
@@ -58,7 +76,8 @@ async def mdq_customers(entity_code: Optional[str] = Query(None), limit: int = Q
 
 @router.get("/employees")
 async def mdq_employees(entity_code: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
-    await _ensure_findings()
+    await _ensure_findings(current)
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {"master_type": "employee", "status": "open"}
     if entity_code:
         q["entity_code"] = entity_code
@@ -70,7 +89,8 @@ async def mdq_employees(entity_code: Optional[str] = Query(None), limit: int = Q
 
 @router.get("/gl")
 async def mdq_gl(entity_code: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
-    await _ensure_findings()
+    await _ensure_findings(current)
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {"master_type": "gl_account", "status": "open"}
     if entity_code:
         q["entity_code"] = entity_code
@@ -82,7 +102,8 @@ async def mdq_gl(entity_code: Optional[str] = Query(None), limit: int = Query(20
 
 @router.get("/duplicates")
 async def mdq_duplicates(entity_code: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=1000), current=Depends(get_current_user)):
-    await _ensure_findings()
+    await _ensure_findings(current)
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     # Duplicates are represented by rule_id prefixes.
     q: Dict[str, Any] = {"status": "open", "rule_id": {"$regex": "DUPLICATE"}}
     if entity_code:
@@ -94,6 +115,7 @@ async def mdq_duplicates(entity_code: Optional[str] = Query(None), limit: int = 
 
 @router.get("/change-audit")
 async def mdq_change_audit(entity_code: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=2000), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     # Prefer real audit logs; if missing, synthesize a small stable set.
     q: Dict[str, Any] = {"action": {"$regex": "master|vendor|customer|employee|gl|bank", "$options": "i"}}
     if entity_code:
@@ -111,10 +133,11 @@ async def mdq_change_audit(entity_code: Optional[str] = Query(None), limit: int 
 
 @router.post("/{finding_id}/create-case")
 async def mdq_create_case(finding_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
-    await _ensure_findings()
+    await _ensure_findings(current)
     f = await db.master_data_quality_findings.find_one({"id": finding_id}, {"_id": 0})
     if not f:
         raise HTTPException(404, "Finding not found")
+    await assert_master_dq_finding_entity_scope(db, current=current, finding=f)
 
     now = as_of_now()
     cid = f"case-mdq-{__import__('uuid').uuid4().hex[:10]}"
@@ -122,7 +145,10 @@ async def mdq_create_case(finding_id: str, body: Dict[str, Any], current=Depends
 
     master_type = str(f.get("master_type") or "master")
     obj_id = str(f.get("object_id") or "")
-    entity = f.get("entity_code") or body.get("entity") or current.get("entity") or "US-HQ"
+    raw_entity = f.get("entity_code") or body.get("entity") or body.get("entity_code")
+    entity = await enforce_entity_scope(db, current=current, requested_entity_code=raw_entity)
+    if not entity:
+        entity = str(f.get("entity_code") or body.get("entity") or "US-HQ")
     sev = str(body.get("severity") or f.get("severity") or "warning")
     exposure = float(body.get("financial_exposure") or 0.0)
 

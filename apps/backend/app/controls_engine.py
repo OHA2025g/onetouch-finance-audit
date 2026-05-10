@@ -176,8 +176,9 @@ async def _apply_exception_org_enrichment_batch(db, batch: List[Dict[str, Any]])
 
 def _exc(control: dict, *, entity: str, severity: str, title: str, summary: str,
          source_record_type: str, source_record_id: str,
-         financial_exposure: float, materiality_score: float, anomaly_score: float) -> dict:
-    return {
+         financial_exposure: float, materiality_score: float, anomaly_score: float,
+         source_record_user_email: Optional[str] = None) -> dict:
+    doc: Dict[str, Any] = {
         "id": str(uuid.uuid4()),
         "control_id": control["id"],
         "control_code": control["code"],
@@ -196,6 +197,9 @@ def _exc(control: dict, *, entity: str, severity: str, title: str, summary: str,
         "summary": summary,
         "recurrence_count": 0,
     }
+    if source_record_user_email:
+        doc["source_record_user_email"] = source_record_user_email
+    return doc
 
 
 # ----- Individual rule implementations -----
@@ -365,7 +369,8 @@ async def run_inactive_user_activity(db, control):
                         source_record_id=e["id"],
                         financial_exposure=0.0,
                         materiality_score=0.65,
-                        anomaly_score=0.88))
+                        anomaly_score=0.88,
+                        source_record_user_email=e["user_email"]))
     return exs
 
 

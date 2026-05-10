@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Q
 from fastapi.responses import StreamingResponse, Response
 
 from app.auth import get_current_user, hash_password
+from app.core.entity_scope import entity_scope_enforced
 from app.deps import db, audit_log, iso
 from app.models import IngestResult, PlatformUserCreate, UserPublic
 from app.seed import seed_database
@@ -23,6 +24,7 @@ from app.services.case_service import merge_cases_master_filters
 from app.notifier import (get_settings as get_notif_settings, save_settings as save_notif_settings,
                           scan_sla_breaches, list_notifications, send_daily_brief)
 from app.training import train_anomaly_model, list_model_versions, approve_model_version
+from app.services.rbac_service import enforce_entity_scope, role_bypasses_entity_scope
 
 router = APIRouter(tags=["admin-ops"])
 
@@ -639,6 +641,7 @@ async def ingest_csv(
     dataset = dataset.strip().lower()
     if dataset not in ("vendors", "invoices"):
         raise HTTPException(400, "Unsupported dataset. Use 'vendors' or 'invoices'.")
+    forced_entity = await enforce_entity_scope(db, current=current, requested_entity_code=None)
     content = (await file.read()).decode("utf-8", errors="ignore")
     reader = csv.DictReader(io.StringIO(content))
     rows_ingested = 0
@@ -652,7 +655,7 @@ async def ingest_csv(
                     "id": row.get("id") or f"V-CSV-{uuid.uuid4().hex[:8]}",
                     "vendor_code": row.get("vendor_code") or row.get("id") or f"V-{uuid.uuid4().hex[:6]}",
                     "vendor_name": row["vendor_name"],
-                    "entity": row.get("entity", "US-HQ"),
+                    "entity": forced_entity if forced_entity else row.get("entity", "US-HQ"),
                     "bank_account_hash": row.get("bank_account_hash", "HASHCSV"),
                     "bank_changed_at": row.get("bank_changed_at", iso(now - timedelta(days=365))),
                     "status": row.get("status", "active"),
@@ -664,7 +667,7 @@ async def ingest_csv(
                     "invoice_number": row["invoice_number"],
                     "vendor_id": row.get("vendor_id", "V-1000"),
                     "vendor_name": row.get("vendor_name", "Unknown"),
-                    "entity": row.get("entity", "US-HQ"),
+                    "entity": forced_entity if forced_entity else row.get("entity", "US-HQ"),
                     "invoice_date": row.get("invoice_date", iso(now)),
                     "amount": float(row["amount"]),
                     "tax_amount": float(row.get("tax_amount", 0)),
@@ -736,6 +739,7 @@ async def report_pdf(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     pdf = await build_pdf(
         db,
         entity_code=entity_code,
@@ -765,6 +769,7 @@ async def report_xlsx(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     xlsx = await build_xlsx(
         db,
         entity_code=entity_code,
@@ -801,6 +806,7 @@ async def auditor_pack(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(_require_auditor_or_internal),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     cockpit = await cfo_cockpit(
         db,
         entity_code=entity_code,
@@ -851,9 +857,18 @@ async def auditor_pack(
 async def auditor_control_detail(control_id: str, current=Depends(_require_auditor_or_internal)):
     c = await db.controls.find_one({"id": control_id}, {"_id": 0})
     if not c:
+        c = await db.controls.find_one({"code": control_id}, {"_id": 0})
+    if not c:
         raise HTTPException(404, "Control not found")
-    runs = [r async for r in db.test_runs.find({"control_id": control_id}, {"_id": 0}).sort("run_ts", -1).limit(10)]
-    exceptions = [e async for e in db.exceptions.find({"control_id": control_id}, {"_id": 0}).limit(50)]
+    cid = c["id"]
+    runs = [r async for r in db.test_runs.find({"control_id": cid}, {"_id": 0}).sort("run_ts", -1).limit(10)]
+    exceptions = [e async for e in db.exceptions.find({"control_id": cid}, {"_id": 0}).limit(50)]
+    if await entity_scope_enforced(db) and not role_bypasses_entity_scope(current):
+        user = await db.users.find_one({"id": current.get("user_id")}, {"_id": 0, "entity": 1})
+        ue = (user or {}).get("entity")
+        if ue:
+            ue_s = str(ue).strip()
+            exceptions = [e for e in exceptions if str(e.get("entity") or "").strip() == ue_s]
     return {"control": c, "recent_runs": runs, "exceptions": exceptions}
 
 
@@ -881,6 +896,8 @@ async def notifications_settings_patch(patch: Dict[str, Any], current=Depends(ge
 async def notifications_scan_now(current=Depends(get_current_user)):
     if current["role"] == "External Auditor":
         raise HTTPException(403, "Read-only auditor role cannot trigger scans")
+    if await entity_scope_enforced(db) and current.get("role") != "Super Admin":
+        raise HTTPException(403, "Entity scope violation")
     return await scan_sla_breaches(db)
 
 
@@ -888,6 +905,8 @@ async def notifications_scan_now(current=Depends(get_current_user)):
 async def daily_brief_send_now(current=Depends(get_current_user)):
     if current["role"] == "External Auditor":
         raise HTTPException(403, "Read-only auditor role cannot dispatch briefs")
+    if await entity_scope_enforced(db) and current.get("role") != "Super Admin":
+        raise HTTPException(403, "Entity scope violation")
     result = await send_daily_brief(db)
     await audit_log(current["email"], "send_daily_brief", "notification", result.get("id", "skipped"))
     return result
@@ -896,8 +915,10 @@ async def daily_brief_send_now(current=Depends(get_current_user)):
 # ---------- Anomaly Training ----------
 @router.post("/anomaly/train")
 async def anomaly_train(body: Optional[Dict[str, Any]] = Body(default=None), current=Depends(get_current_user)):
-    if current["role"] not in ("CFO", "Internal Auditor", "Controller"):
+    if current["role"] not in ("CFO", "Internal Auditor", "Controller", "Super Admin"):
         raise HTTPException(403, "Training requires CFO / Controller / Internal Auditor role")
+    if await entity_scope_enforced(db) and current.get("role") != "Super Admin":
+        raise HTTPException(403, "Entity scope violation")
     body = body or {}
     result = await train_anomaly_model(
         db,

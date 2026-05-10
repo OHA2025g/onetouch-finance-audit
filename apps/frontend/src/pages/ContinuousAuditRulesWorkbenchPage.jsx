@@ -3,30 +3,17 @@ import { http } from "../lib/api";
 import { toast } from "sonner";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
-import { useMastersFilters } from "../lib/MastersFilterContext";
 import { drillTargetExceptionListRow, useWorkbenchRowDrill } from "../lib/workbenchDrillNav";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { StatCard } from "../components/StatCard";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
 import { fmtUSD } from "../lib/format";
 
 export default function ContinuousAuditRulesWorkbenchPage() {
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId } = useMastersFilters();
   const { drillToTarget } = useWorkbenchRowDrill();
   const [d, setD] = useState(null);
 
-  const params = useMemo(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId],
-  );
-
+  const params = useDashboardFilterParams();
   const countOne = useMemo(() => ({ ...params, limit: 1, offset: 0 }), [params]);
 
   useEffect(() => {

@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/risk-intelligence", tags=["risk-intelligence"])
@@ -186,6 +187,7 @@ async def _recompute_scores(*, entity_code: Optional[str], limit_per_type: int =
 
 @router.get("/summary")
 async def risk_summary(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_risk_scores(entity_code=entity_code)
     q: Dict[str, Any] = {"entity_code": entity_code} if entity_code else {}
     cur = db.finance_risk_scores.find(q, {"_id": 0}).sort("score", -1).limit(2000)
@@ -201,6 +203,7 @@ async def risk_summary(entity_code: Optional[str] = Query(None), current=Depends
 
 @router.get("/scores")
 async def risk_scores(entity_code: Optional[str] = Query(None), object_type: Optional[str] = Query(None), band: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=2000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_risk_scores(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -225,6 +228,7 @@ async def risk_object(object_type: str, object_id: str, current=Depends(get_curr
 
 @router.get("/heatmap")
 async def risk_heatmap(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_risk_scores(entity_code=entity_code)
     q: Dict[str, Any] = {"entity_code": entity_code} if entity_code else {}
     items = [x async for x in db.finance_risk_scores.find(q, {"_id": 0, "object_type": 1, "band": 1}).limit(5000)]
@@ -241,7 +245,7 @@ async def risk_heatmap(entity_code: Optional[str] = Query(None), current=Depends
 
 @router.post("/recalculate")
 async def risk_recalculate(body: Dict[str, Any], current=Depends(get_current_user)):
-    entity_code = body.get("entity_code")
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=body.get("entity_code"))
     limit_per_type = int(body.get("limit_per_type") or 50)
     out = await _recompute_scores(entity_code=entity_code, limit_per_type=limit_per_type)
     await audit_log(current["email"], "risk_recalculate", "risk_scores", entity_code or "all", {"limit_per_type": limit_per_type, "upserts": out.get("upserts")})
@@ -251,6 +255,7 @@ async def risk_recalculate(body: Dict[str, Any], current=Depends(get_current_use
 @router.post("/{object_id}/feedback")
 async def risk_feedback(object_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
     """Feedback loop: record an analyst label for a risk item."""
+    ec = await enforce_entity_scope(db, current=current, requested_entity_code=body.get("entity_code"))
     fid = f"RFB-{__import__('uuid').uuid4().hex[:10]}"
     doc = {
         "id": fid,
@@ -258,7 +263,7 @@ async def risk_feedback(object_id: str, body: Dict[str, Any], current=Depends(ge
         "object_type": body.get("object_type"),
         "label": body.get("label") or "false_positive",  # false_positive|confirmed|needs_review
         "note": body.get("note"),
-        "entity_code": body.get("entity_code"),
+        "entity_code": ec,
         "created_at": _now(),
         "created_by": current.get("email"),
     }

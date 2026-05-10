@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/policies", tags=["policies"])
@@ -130,6 +131,7 @@ async def _ensure_seed_policies(entity_code: Optional[str] = None) -> Dict[str, 
 
 @router.get("")
 async def policies_list(entity_code: Optional[str] = Query(None), category: Optional[str] = Query(None), status: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_policies(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -146,9 +148,12 @@ async def policies_list(entity_code: Optional[str] = Query(None), category: Opti
 @router.post("")
 async def policies_create(body: Dict[str, Any], current=Depends(get_current_user)):
     pid = f"POL-{__import__('uuid').uuid4().hex[:10]}"
+    ent = str(body.get("entity") or body.get("entity_code") or "GLOBAL")
+    if ent != "GLOBAL":
+        ent = await enforce_entity_scope(db, current=current, requested_entity_code=ent)
     doc = {
         "id": pid,
-        "entity": body.get("entity") or "GLOBAL",
+        "entity": ent,
         "title": body.get("title") or "Policy",
         "category": body.get("category") or "finance",
         "version": int(body.get("version") or 1),
@@ -169,6 +174,9 @@ async def policies_new_version(policy_id: str, body: Dict[str, Any], current=Dep
     pol = await db.policies.find_one({"id": policy_id}, {"_id": 0})
     if not pol:
         raise HTTPException(404, "Policy not found")
+    pe = pol.get("entity")
+    if pe and pe != "GLOBAL":
+        await enforce_entity_scope(db, current=current, requested_entity_code=pe)
     new_version = int(pol.get("version") or 1) + 1
     nid = f"{policy_id}-v{new_version}"
     doc = {
@@ -194,6 +202,7 @@ async def policies_new_version(policy_id: str, body: Dict[str, Any], current=Dep
 
 @router.get("/attestations")
 async def policy_attestations(entity_code: Optional[str] = Query(None), user_email: Optional[str] = Query(None), status: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_policies(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -211,7 +220,9 @@ async def policy_attestations(entity_code: Optional[str] = Query(None), user_ema
 async def policy_attestation_campaign(body: Dict[str, Any], current=Depends(get_current_user)):
     """Create an attestation campaign and seed pending attestation rows."""
     cid = f"CMP-{__import__('uuid').uuid4().hex[:10]}"
-    entity = body.get("entity") or "GLOBAL"
+    entity = str(body.get("entity") or body.get("entity_code") or "GLOBAL")
+    if entity != "GLOBAL":
+        entity = await enforce_entity_scope(db, current=current, requested_entity_code=entity)
     policy_ids = body.get("policy_ids") or ["POL-1001", "POL-1002"]
     users = body.get("users") or ["controller@onetouch.ai", "cfo@onetouch.ai"]
     due_date = body.get("due_date") or (datetime.now(timezone.utc) + timedelta(days=14)).date().isoformat()
@@ -232,7 +243,9 @@ async def policy_attestation_campaign(body: Dict[str, Any], current=Depends(get_
 @router.post("/{policy_id}/acknowledge")
 async def policy_acknowledge(policy_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
     """Acknowledge a policy (creates or updates attestation row)."""
-    entity = body.get("entity") or "GLOBAL"
+    entity = str(body.get("entity") or body.get("entity_code") or "GLOBAL")
+    if entity != "GLOBAL":
+        entity = await enforce_entity_scope(db, current=current, requested_entity_code=entity)
     campaign_id = body.get("campaign_id")
     user_email = body.get("user_email") or current.get("email")
     aid = body.get("attestation_id") or f"ATST-{policy_id}-{user_email}"
@@ -254,6 +267,7 @@ async def policy_acknowledge(policy_id: str, body: Dict[str, Any], current=Depen
 
 @router.get("/breaches")
 async def policy_breaches(entity_code: Optional[str] = Query(None), status: Optional[str] = Query(None), policy_id: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_policies(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -278,6 +292,7 @@ async def policy_breach_create_case(breach_id: str, body: Dict[str, Any], curren
     cid = f"case-pol-{__import__('uuid').uuid4().hex[:10]}"
     ex_id = f"policy-breach-{breach_id}"
     entity = breach.get("entity") or body.get("entity") or current.get("entity") or "US-HQ"
+    entity = await enforce_entity_scope(db, current=current, requested_entity_code=str(entity))
     exposure = float(body.get("financial_exposure") or breach.get("financial_exposure") or 0.0)
 
     ex_doc = {

@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { StatCard } from "../components/StatCard";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
 import { fmtUSD, fmtDate } from "../lib/format";
@@ -14,21 +14,10 @@ export default function WorkingCapitalPage() {
   const { pathname } = useLocation();
   const isPhase10PayablesRoute = pathname.includes("/working-capital/payables");
   const isPhase9ReceivablesRoute = pathname.includes("/working-capital/receivables");
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId } = useMastersFilters();
   const [d, setD] = useState(null);
+  const { entityCode, periodExplicit, departmentId, costCenterId } = useMastersFilters();
 
-  const params = useMemo(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId],
-  );
-
+  const params = useDashboardFilterParams();
   useEffect(() => {
     http
       .get("/dashboard/working-capital", { params })

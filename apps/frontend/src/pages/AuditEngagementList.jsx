@@ -7,9 +7,11 @@ import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
 import { AuditStatusBadge, RiskBadge } from "../components/ca/AuditCaBadges";
 import { StatCard } from "../components/StatCard";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 export default function AuditEngagementList() {
   const nav = useNavigate();
+  const dashboardParams = useDashboardFilterParams();
   const [rows, setRows] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -18,8 +20,8 @@ export default function AuditEngagementList() {
     setLoading(true);
     try {
       const [listRes, metRes] = await Promise.all([
-        http.get("/audit-engagements"),
-        http.get("/audit-engagements/planning-metrics"),
+        http.get("/audit-engagements", { params: dashboardParams }),
+        http.get("/audit-engagements/planning-metrics", { params: dashboardParams }),
       ]);
       setRows(listRes.data || []);
       setMetrics(metRes.data || null);
@@ -28,7 +30,7 @@ export default function AuditEngagementList() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [dashboardParams]);
 
   useEffect(() => {
     let cancelled = false;

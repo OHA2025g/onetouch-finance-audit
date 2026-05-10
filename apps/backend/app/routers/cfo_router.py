@@ -11,6 +11,7 @@ from app.deps import db, audit_log
 from app.services import action_queue_service as aqs
 from app.analytics import cfo_cockpit, controller_dashboard, working_capital_dashboard, treasury_dashboard
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 router = APIRouter(prefix="/cfo", tags=["cfo"])
 
@@ -27,6 +28,7 @@ async def action_queue_list(
     offset: int = Query(0, ge=0),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Super Admin")),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     if refresh:
         await aqs.refresh_action_queue(
             db,
@@ -53,6 +55,10 @@ async def action_queue_detail(
     doc = await aqs.get_action(db, action_id)
     if not doc:
         raise HTTPException(404, "Action not found")
+    det = doc.get("detail") or {}
+    ent = doc.get("entity") or det.get("entity")
+    if ent:
+        await enforce_entity_scope(db, current=current, requested_entity_code=ent)
     return doc
 
 
@@ -62,6 +68,13 @@ async def action_approve(
     body: Dict[str, Any] = Body(default={}),
     current=Depends(require_roles("CFO", "Controller", "Super Admin")),
 ):
+    doc0 = await aqs.get_action(db, action_id)
+    if not doc0:
+        raise HTTPException(404, "Action not found")
+    det = doc0.get("detail") or {}
+    ent = doc0.get("entity") or det.get("entity")
+    if ent:
+        await enforce_entity_scope(db, current=current, requested_entity_code=ent)
     note = str(body.get("note") or "")
     doc = await aqs.approve(db, action_id, actor=current["email"], note=note)
     await audit_log(current["email"], "cfo_action_approve", "cfo_action", action_id, {"note": note})
@@ -74,6 +87,13 @@ async def action_reject(
     body: Dict[str, Any] = Body(default={}),
     current=Depends(require_roles("CFO", "Controller", "Super Admin")),
 ):
+    doc0 = await aqs.get_action(db, action_id)
+    if not doc0:
+        raise HTTPException(404, "Action not found")
+    det = doc0.get("detail") or {}
+    ent = doc0.get("entity") or det.get("entity")
+    if ent:
+        await enforce_entity_scope(db, current=current, requested_entity_code=ent)
     note = str(body.get("note") or "")
     doc = await aqs.reject(db, action_id, actor=current["email"], note=note)
     await audit_log(current["email"], "cfo_action_reject", "cfo_action", action_id, {"note": note})
@@ -86,6 +106,13 @@ async def action_escalate(
     body: Dict[str, Any] = Body(default={}),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Super Admin")),
 ):
+    doc0 = await aqs.get_action(db, action_id)
+    if not doc0:
+        raise HTTPException(404, "Action not found")
+    det = doc0.get("detail") or {}
+    ent = doc0.get("entity") or det.get("entity")
+    if ent:
+        await enforce_entity_scope(db, current=current, requested_entity_code=ent)
     note = str(body.get("note") or "")
     doc = await aqs.escalate(db, action_id, actor=current["email"], note=note)
     await audit_log(current["email"], "cfo_action_escalate", "cfo_action", action_id, {"note": note})
@@ -98,6 +125,13 @@ async def action_comment(
     body: Dict[str, Any] = Body(...),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Super Admin")),
 ):
+    doc0 = await aqs.get_action(db, action_id)
+    if not doc0:
+        raise HTTPException(404, "Action not found")
+    det = doc0.get("detail") or {}
+    ent = doc0.get("entity") or det.get("entity")
+    if ent:
+        await enforce_entity_scope(db, current=current, requested_entity_code=ent)
     text = str(body.get("comment") or "").strip()
     if not text:
         raise HTTPException(400, "comment is required")
@@ -123,6 +157,7 @@ async def cfo_summary_bff(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     out = await cfo_cockpit(
         db,
         entity_code=entity_code,
@@ -142,6 +177,7 @@ async def cfo_financial_health(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     c = await cfo_cockpit(
         db, entity_code=entity_code, period_ym=period_ym, department_id=department_id, cost_center_id=cost_center_id
     )
@@ -165,6 +201,7 @@ async def cfo_risk_summary(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     c = await cfo_cockpit(
         db, entity_code=entity_code, period_ym=period_ym, department_id=department_id, cost_center_id=cost_center_id
     )
@@ -185,6 +222,7 @@ async def cfo_liquidity_watch(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     t = await treasury_dashboard(
         db, entity_code=entity_code, period_ym=period_ym, department_id=department_id, cost_center_id=cost_center_id
     )
@@ -199,6 +237,7 @@ async def cfo_working_capital(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     wc = await working_capital_dashboard(
         db, entity_code=entity_code, period_ym=period_ym, department_id=department_id, cost_center_id=cost_center_id
     )
@@ -215,6 +254,7 @@ async def cfo_team_performance(
 ):
     from app.services import finance_team_service as fts
 
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     out = await fts.finance_team_dashboard(
         db,
         entity_code=entity_code,

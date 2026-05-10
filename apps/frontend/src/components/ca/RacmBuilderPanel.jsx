@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { http } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { FileXls, Lightning, Plus } from "@phosphor-icons/react";
 import { PageHeader, SectionCard } from "../PageShell";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../DataTable";
@@ -27,6 +28,7 @@ function heatColor(score, max) {
 
 export default function RacmBuilderPanel({ engagementId, compact = false }) {
   const eid = engagementId;
+  const dashboardParams = useDashboardFilterParams();
   const [risks, setRisks] = useState([]);
   const [heatmap, setHeatmap] = useState(null);
   const [planPreview, setPlanPreview] = useState([]);
@@ -42,16 +44,16 @@ export default function RacmBuilderPanel({ engagementId, compact = false }) {
     if (!eid) return;
     setLoading(true);
     try {
-      const params = {};
+      const params = { ...dashboardParams };
       if (highOnly) params.high_risk_only = true;
       if (owner.trim()) params.owner = owner.trim();
       if (processFilter.trim()) params.process_area = processFilter.trim();
       if (fsFilter.trim()) params.financial_statement_area = fsFilter.trim();
       const [rRes, hRes, pRes, cRes] = await Promise.all([
         http.get(`/audit-engagements/${encodeURIComponent(eid)}/risks`, { params }),
-        http.get(`/audit-engagements/${encodeURIComponent(eid)}/risk-heatmap`),
-        http.get(`/audit-engagements/${encodeURIComponent(eid)}/risks/audit-plan-preview`),
-        http.get("/controls").catch(() => ({ data: [] })),
+        http.get(`/audit-engagements/${encodeURIComponent(eid)}/risk-heatmap`, { params: dashboardParams }),
+        http.get(`/audit-engagements/${encodeURIComponent(eid)}/risks/audit-plan-preview`, { params: dashboardParams }),
+        http.get("/controls", { params: dashboardParams }).catch(() => ({ data: [] })),
       ]);
       setRisks(rRes.data || []);
       setHeatmap(hRes.data || null);
@@ -62,14 +64,14 @@ export default function RacmBuilderPanel({ engagementId, compact = false }) {
     } finally {
       setLoading(false);
     }
-  }, [eid, highOnly, owner, processFilter, fsFilter]);
+  }, [eid, highOnly, owner, processFilter, fsFilter, dashboardParams]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const matrix = heatmap?.matrix || {};
-  const categories = heatmap?.risk_categories || RISK_CATEGORIES;
+  const matrix = useMemo(() => heatmap?.matrix || {}, [heatmap]);
+  const categories = useMemo(() => heatmap?.risk_categories || RISK_CATEGORIES, [heatmap]);
   const processes = useMemo(() => Object.keys(matrix).sort(), [matrix]);
   const maxCell = useMemo(() => {
     let m = 0;
@@ -84,7 +86,10 @@ export default function RacmBuilderPanel({ engagementId, compact = false }) {
 
   const exportXlsx = async () => {
     try {
-      const resp = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/risks/export.xlsx`, { responseType: "blob" });
+      const resp = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/risks/export.xlsx`, {
+        responseType: "blob",
+        params: dashboardParams,
+      });
       const url = URL.createObjectURL(resp.data);
       const a = document.createElement("a");
       a.href = url;
@@ -99,10 +104,14 @@ export default function RacmBuilderPanel({ engagementId, compact = false }) {
 
   const generateHighRiskProcedures = async () => {
     try {
-      const { data } = await http.post(`/audit-engagements/${encodeURIComponent(eid)}/risks/generate-procedures-from-high-risk`);
+      const { data } = await http.post(
+        `/audit-engagements/${encodeURIComponent(eid)}/risks/generate-procedures-from-high-risk`,
+        null,
+        { params: dashboardParams },
+      );
       setRisks(data.risks || []);
       toast.success(`Updated ${data.updated_risks || 0} high-risk row(s)`);
-      const pRes = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/risks/audit-plan-preview`);
+      const pRes = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/risks/audit-plan-preview`, { params: dashboardParams });
       setPlanPreview(pRes.data?.auto_plan_items || []);
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Generate failed");
@@ -130,7 +139,7 @@ export default function RacmBuilderPanel({ engagementId, compact = false }) {
       status: "open",
     };
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/risks`, body);
+      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/risks`, body, { params: dashboardParams });
       toast.success("Risk created");
       setNewRiskOpen(false);
       ev.target.reset();
@@ -143,7 +152,7 @@ export default function RacmBuilderPanel({ engagementId, compact = false }) {
   const mapControl = async (riskId, controlId) => {
     if (!controlId) return;
     try {
-      await http.post(`/risks/${encodeURIComponent(riskId)}/controls`, { control_id: controlId });
+      await http.post(`/risks/${encodeURIComponent(riskId)}/controls`, { control_id: controlId }, { params: dashboardParams });
       toast.success("Control mapped");
       load();
     } catch (err) {
@@ -154,7 +163,11 @@ export default function RacmBuilderPanel({ engagementId, compact = false }) {
   const addProcedure = async (riskId, title, description) => {
     if (!title?.trim()) return;
     try {
-      await http.post(`/risks/${encodeURIComponent(riskId)}/procedures`, { title: title.trim(), description: description || "" });
+      await http.post(
+        `/risks/${encodeURIComponent(riskId)}/procedures`,
+        { title: title.trim(), description: description || "" },
+        { params: dashboardParams },
+      );
       toast.success("Procedure added");
       load();
     } catch {

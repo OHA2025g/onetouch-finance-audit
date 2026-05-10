@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { fmtDateTime } from "../lib/format";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import { MF_CC, MF_DEPT, MF_ENTITY, MF_PERIOD } from "../lib/mastersFilterKeys";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 function masterHrefFromFiltersApplied(pathname, filtersApplied) {
   const fa = filtersApplied || {};
@@ -21,6 +22,7 @@ export default function AuditLogEvent() {
   const { logId } = useParams();
   const nav = useNavigate();
   const [ev, setEv] = useState(null);
+  const defaultReportParams = useDashboardFilterParams();
 
   useEffect(() => {
     http
@@ -29,7 +31,7 @@ export default function AuditLogEvent() {
       .catch(() => toast.error("Failed to load audit event"));
   }, [logId]);
 
-  const filtersApplied = ev?.detail?.filters_applied || {};
+  const filtersApplied = useMemo(() => ev?.detail?.filters_applied || {}, [ev]);
   const canReplayPack =
     (ev?.action_type === "export_pdf" || ev?.action_type === "export_xlsx") &&
     ev?.object_type === "report" &&
@@ -51,7 +53,7 @@ export default function AuditLogEvent() {
   const replay = async () => {
     try {
       const resp = await http.get(`/reports/audit-committee-pack.${replayFormat}`, {
-        params: filtersApplied,
+        params: { ...defaultReportParams, ...filtersApplied },
         responseType: "blob",
       });
       const blob = new Blob([resp.data]);

@@ -44,6 +44,15 @@ def _h(tok: str) -> dict:
 
 
 class TestBudgetContracts:
+    def test_budget_upload_rejects_invalid_lines(self, token):
+        bad = requests.post(
+            f"{API}/budget/upload",
+            headers=_h(token),
+            json={"entity": "IN-HQ", "name": "Bad lines", "lines": [{"amount": 1}]},
+            timeout=30,
+        )
+        assert bad.status_code == 400, bad.text
+
     def test_budget_upload_list_get_approve_lock_unlock(self, token):
         up = requests.post(
             f"{API}/budget/upload",

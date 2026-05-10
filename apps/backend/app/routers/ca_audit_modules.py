@@ -10,9 +10,15 @@ from urllib.parse import quote
 import pandas as pd
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
+from starlette.requests import Request
 
 from app.auth import get_current_user
 from app.deps import audit_log, db, iso
+from app.services.rbac_service import (
+    assert_engagement_entity_scope,
+    assert_super_admin_when_entity_scope_enforced,
+    enforce_entity_scope,
+)
 from app.schemas import ca_audit as sch
 from app.services import case_service as csvc
 from app.services.ca_compliance_templates import compliance_rows_for_laws
@@ -49,11 +55,43 @@ def _now() -> str:
     return iso(datetime.now(timezone.utc))
 
 
-async def _engagement_or_404(engagement_id: str) -> Dict[str, Any]:
+async def _engagement_or_404(
+    engagement_id: str,
+    *,
+    current: dict,
+    request: Optional[Request] = None,
+) -> Dict[str, Any]:
+    entity_code: Optional[str] = None
+    if request is not None:
+        qv = request.query_params.get("entity_code")
+        entity_code = str(qv).strip() if qv else None
+        entity_code = entity_code or None
+    await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     doc = await db.audit_engagements.find_one({"engagement_id": engagement_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Engagement not found")
+    await assert_engagement_entity_scope(db, current=current, engagement=doc)
     return doc
+
+
+async def _assert_engagement_scope_for_doc(
+    doc: Optional[Dict[str, Any]],
+    *,
+    current: dict,
+    not_found_detail: str = "Resource not found",
+    request: Optional[Request] = None,
+) -> str:
+    """For CA child rows addressed only by id, resolve ``engagement_id`` and apply the same RBAC as engagement routes."""
+    if not doc:
+        raise HTTPException(404, not_found_detail)
+    eid = doc.get("engagement_id")
+    if not eid:
+        raise HTTPException(404, not_found_detail)
+    eid_s = str(eid).strip()
+    if not eid_s:
+        raise HTTPException(404, not_found_detail)
+    await _engagement_or_404(eid_s, current=current, request=request)
+    return eid_s
 
 
 async def _compute_continuous_assurance(engagement_id: str, eng: Dict[str, Any]) -> Dict[str, Any]:
@@ -76,8 +114,8 @@ async def _exceptions_for_engagement(engagement_id: str) -> List[Dict[str, Any]]
 
 
 @router.post("/audit-engagements/{engagement_id}/materiality")
-async def upsert_materiality(engagement_id: str, body: sch.MaterialityBaseIn, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def upsert_materiality(request: Request, engagement_id: str, body: sch.MaterialityBaseIn, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     row = body.model_dump()
     prior = await db.ca_materiality.find_one({"engagement_id": engagement_id}, {"_id": 0})
     record_id = (prior or {}).get("id") or str(uuid.uuid4())
@@ -117,8 +155,8 @@ async def upsert_materiality(engagement_id: str, body: sch.MaterialityBaseIn, cu
 
 
 @router.get("/audit-engagements/{engagement_id}/materiality")
-async def get_materiality(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def get_materiality(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     m = await db.ca_materiality.find_one({"engagement_id": engagement_id}, {"_id": 0})
     if not m:
         raise HTTPException(404, "Materiality not found")
@@ -127,11 +165,12 @@ async def get_materiality(engagement_id: str, current=Depends(get_current_user))
 
 
 @router.put("/materiality/{materiality_id}")
-async def update_materiality(materiality_id: str, body: sch.MaterialityBaseIn, current=Depends(get_current_user)):
+async def update_materiality(materiality_id: str, body: sch.MaterialityBaseIn, request: Request, current=Depends(get_current_user)):
     existing = await db.ca_materiality.find_one({"id": materiality_id}, {"_id": 0})
     if not existing:
         raise HTTPException(404, "Materiality not found")
     engagement_id = existing["engagement_id"]
+    await _engagement_or_404(str(engagement_id), current=current, request=request)
     merged = {**existing, **{k: v for k, v in body.model_dump().items() if v is not None}}
     if merged.get("override_amount") is not None and abs(float(merged.get("override_amount") or 0)) > 1e-12:
         if not str(merged.get("override_reason") or "").strip():
@@ -167,11 +206,13 @@ async def update_materiality(materiality_id: str, body: sch.MaterialityBaseIn, c
 
 
 @router.post("/materiality/{materiality_id}/approve")
-async def approve_materiality(materiality_id: str, body: sch.MaterialityApproveIn, current=Depends(get_current_user)):
+async def approve_materiality(materiality_id: str, body: sch.MaterialityApproveIn, request: Request, current=Depends(get_current_user)):
     m = await db.ca_materiality.find_one({"id": materiality_id}, {"_id": 0})
     if not m:
         raise HTTPException(404, "Materiality not found")
     eng_id = m.get("engagement_id") or ""
+    if eng_id:
+        await _engagement_or_404(str(eng_id), current=current, request=request)
     sets: Dict[str, Any] = {"approval_status": body.approval_status, "updated_at": _now()}
     if body.approval_status == "prepared":
         sets["prepared_by"] = body.prepared_by or current["email"]
@@ -192,8 +233,8 @@ async def approve_materiality(materiality_id: str, body: sch.MaterialityApproveI
 
 # ----- RACM / Risks -----
 @router.post("/audit-engagements/{engagement_id}/risks")
-async def create_risk(engagement_id: str, body: sch.AuditRiskCreate, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def create_risk(request: Request, engagement_id: str, body: sch.AuditRiskCreate, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     dump = body.model_dump()
     racm, titles = racm_svc.merge_racm_procedures_from_create(dump)
     dump.pop("procedures", None)
@@ -216,6 +257,7 @@ async def create_risk(engagement_id: str, body: sch.AuditRiskCreate, current=Dep
 
 @router.get("/audit-engagements/{engagement_id}/risks")
 async def list_risks(
+    request: Request,
     engagement_id: str,
     high_risk_only: bool = False,
     owner: Optional[str] = None,
@@ -223,7 +265,7 @@ async def list_risks(
     financial_statement_area: Optional[str] = None,
     current=Depends(get_current_user),
 ):
-    await _engagement_or_404(engagement_id)
+    await _engagement_or_404(engagement_id, current=current, request=request)
     q: Dict[str, Any] = {"engagement_id": engagement_id}
     if high_risk_only:
         q["risk_rating"] = {"$in": ["high", "critical"]}
@@ -238,18 +280,18 @@ async def list_risks(
 
 
 @router.get("/audit-engagements/{engagement_id}/risks/audit-plan-preview")
-async def racm_audit_plan_preview(engagement_id: str, current=Depends(get_current_user)):
+async def racm_audit_plan_preview(request: Request, engagement_id: str, current=Depends(get_current_user)):
     """High / critical risks and their procedures — auto audit plan emphasis."""
-    await _engagement_or_404(engagement_id)
+    await _engagement_or_404(engagement_id, current=current, request=request)
     rows = [r async for r in db.ca_risks.find({"engagement_id": engagement_id}, {"_id": 0})]
     norm = [racm_svc.normalize_risk_racm(r) for r in rows]
     return {"engagement_id": engagement_id, "auto_plan_items": racm_svc.build_audit_plan_preview(norm)}
 
 
 @router.post("/audit-engagements/{engagement_id}/risks/generate-procedures-from-high-risk")
-async def generate_procedures_from_high_risk(engagement_id: str, current=Depends(get_current_user)):
+async def generate_procedures_from_high_risk(request: Request, engagement_id: str, current=Depends(get_current_user)):
     """Add default RACM procedures for high/critical risks that have none (links to audit plan)."""
-    await _engagement_or_404(engagement_id)
+    await _engagement_or_404(engagement_id, current=current, request=request)
     updated = 0
     async for r in db.ca_risks.find(
         {"engagement_id": engagement_id, "risk_rating": {"$in": ["high", "critical"]}}, {"_id": 0}
@@ -269,18 +311,20 @@ async def generate_procedures_from_high_risk(engagement_id: str, current=Depends
 
 
 @router.get("/risks/{risk_id}")
-async def get_risk(risk_id: str, current=Depends(get_current_user)):
+async def get_risk(risk_id: str, request: Request, current=Depends(get_current_user)):
     r = await db.ca_risks.find_one({"id": risk_id}, {"_id": 0})
     if not r:
         raise HTTPException(404, "Risk not found")
+    await _assert_engagement_scope_for_doc(r, current=current, request=request, not_found_detail="Risk not found")
     return racm_svc.normalize_risk_racm(r)
 
 
 @router.put("/risks/{risk_id}")
-async def update_risk(risk_id: str, body: sch.AuditRiskUpdate, current=Depends(get_current_user)):
+async def update_risk(risk_id: str, body: sch.AuditRiskUpdate, request: Request, current=Depends(get_current_user)):
     r = await db.ca_risks.find_one({"id": risk_id}, {"_id": 0})
     if not r:
         raise HTTPException(404, "Risk not found")
+    await _assert_engagement_scope_for_doc(r, current=current, request=request, not_found_detail="Risk not found")
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     merged = {**r, **patch}
     if "audit_procedures" in patch and patch["audit_procedures"] is not None and "racm_procedures" not in patch:
@@ -298,17 +342,22 @@ async def update_risk(risk_id: str, body: sch.AuditRiskUpdate, current=Depends(g
 
 
 @router.delete("/risks/{risk_id}")
-async def delete_risk(risk_id: str, current=Depends(get_current_user)):
+async def delete_risk(risk_id: str, request: Request, current=Depends(get_current_user)):
+    r = await db.ca_risks.find_one({"id": risk_id}, {"_id": 0})
+    if not r:
+        raise HTTPException(404, "Risk not found")
+    await _assert_engagement_scope_for_doc(r, current=current, request=request, not_found_detail="Risk not found")
     await db.ca_risk_control_map.delete_many({"risk_id": risk_id})
     await db.ca_risks.delete_one({"id": risk_id})
     return {"deleted": True}
 
 
 @router.post("/risks/{risk_id}/controls")
-async def map_risk_control(risk_id: str, body: sch.RiskControlLink, current=Depends(get_current_user)):
+async def map_risk_control(risk_id: str, body: sch.RiskControlLink, request: Request, current=Depends(get_current_user)):
     r = await db.ca_risks.find_one({"id": risk_id}, {"_id": 0})
     if not r:
         raise HTTPException(404, "Risk not found")
+    await _assert_engagement_scope_for_doc(r, current=current, request=request, not_found_detail="Risk not found")
     ctrl = await db.controls.find_one({"id": body.control_id}, {"_id": 0, "id": 1, "code": 1, "name": 1})
     if not ctrl:
         raise HTTPException(404, "Control not found in controls engine library")
@@ -332,10 +381,11 @@ async def map_risk_control(risk_id: str, body: sch.RiskControlLink, current=Depe
 
 
 @router.post("/risks/{risk_id}/procedures")
-async def add_procedure(risk_id: str, body: sch.RiskProcedureIn, current=Depends(get_current_user)):
+async def add_procedure(risk_id: str, body: sch.RiskProcedureIn, request: Request, current=Depends(get_current_user)):
     r = await db.ca_risks.find_one({"id": risk_id}, {"_id": 0})
     if not r:
         raise HTTPException(404, "Risk not found")
+    await _assert_engagement_scope_for_doc(r, current=current, request=request, not_found_detail="Risk not found")
     nr = racm_svc.normalize_risk_racm(r)
     procs = list(nr.get("racm_procedures") or [])
     row = {
@@ -354,8 +404,8 @@ async def add_procedure(risk_id: str, body: sch.RiskProcedureIn, current=Depends
 
 
 @router.get("/audit-engagements/{engagement_id}/risk-heatmap")
-async def risk_heatmap(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def risk_heatmap(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     cells: Dict[str, Dict[str, int]] = {}
     for r in await db.ca_risks.find({"engagement_id": engagement_id}, {"_id": 0}).to_list(length=None):
         proc = r.get("process_area") or "General"
@@ -376,8 +426,8 @@ async def risk_heatmap(engagement_id: str, current=Depends(get_current_user)):
 
 
 @router.get("/audit-engagements/{engagement_id}/risks/export.xlsx")
-async def export_racm_xlsx(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def export_racm_xlsx(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     from openpyxl import Workbook
 
     wb = Workbook()
@@ -430,11 +480,12 @@ async def export_racm_xlsx(engagement_id: str, current=Depends(get_current_user)
 # ----- Financial statements -----
 @router.post("/audit-engagements/{engagement_id}/trial-balance/upload")
 async def upload_trial_balance(
+    request: Request,
     engagement_id: str,
     file: UploadFile = File(...),
     current=Depends(get_current_user),
 ):
-    await _engagement_or_404(engagement_id)
+    await _engagement_or_404(engagement_id, current=current, request=request)
     raw = await file.read()
     try:
         if file.filename and file.filename.lower().endswith(".csv"):
@@ -540,8 +591,8 @@ async def upload_trial_balance(
 
 
 @router.get("/audit-engagements/{engagement_id}/trial-balance")
-async def get_trial_balance(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def get_trial_balance(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     meta = await db.ca_trial_balance.find_one({"engagement_id": engagement_id}, {"_id": 0}, sort=[("uploaded_at", -1)])
     lines = [l async for l in db.ca_trial_balance_lines.find({"engagement_id": engagement_id}, {"_id": 0}).limit(5000)]
     return {"meta": meta, "lines": lines}
@@ -623,22 +674,22 @@ async def _generate_fs_snapshot(engagement_id: str, body: sch.FinancialGenerateI
 
 
 @router.post("/audit-engagements/{engagement_id}/financial-statements/generate")
-async def generate_fs(engagement_id: str, body: sch.FinancialGenerateIn, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def generate_fs(request: Request, engagement_id: str, body: sch.FinancialGenerateIn, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     return await _generate_fs_snapshot(engagement_id, body, current)
 
 
 @router.post("/audit-engagements/{engagement_id}/fs/generate")
-async def generate_fs_short_path(engagement_id: str, body: sch.FinancialGenerateIn, current=Depends(get_current_user)):
+async def generate_fs_short_path(request: Request, engagement_id: str, body: sch.FinancialGenerateIn, current=Depends(get_current_user)):
     """Alias for financial-statements/generate (FS audit engine)."""
-    await _engagement_or_404(engagement_id)
+    await _engagement_or_404(engagement_id, current=current, request=request)
     return await _generate_fs_snapshot(engagement_id, body, current)
 
 
 @router.get("/audit-engagements/{engagement_id}/financial-statements/latest")
-async def get_fs_latest(engagement_id: str, current=Depends(get_current_user)):
+async def get_fs_latest(request: Request, engagement_id: str, current=Depends(get_current_user)):
     """Latest generated FS snapshot with validation summary and raised issues."""
-    await _engagement_or_404(engagement_id)
+    await _engagement_or_404(engagement_id, current=current, request=request)
     s = await db.ca_fs_snapshots.find_one({"engagement_id": engagement_id}, {"_id": 0}, sort=[("generated_at", -1)])
     if not s:
         return {"snapshot": None, "message": "Generate financial statements after uploading trial balance"}
@@ -646,8 +697,8 @@ async def get_fs_latest(engagement_id: str, current=Depends(get_current_user)):
 
 
 @router.get("/audit-engagements/{engagement_id}/balance-sheet")
-async def get_bs(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def get_bs(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     s = await db.ca_fs_snapshots.find_one({"engagement_id": engagement_id}, {"_id": 0}, sort=[("generated_at", -1)])
     if not s:
         return {"snapshot_id": None, "generated_at": None, "summary": [], "lines": [], "variances": []}
@@ -661,8 +712,8 @@ async def get_bs(engagement_id: str, current=Depends(get_current_user)):
 
 
 @router.get("/audit-engagements/{engagement_id}/profit-loss")
-async def get_pl(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def get_pl(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     s = await db.ca_fs_snapshots.find_one({"engagement_id": engagement_id}, {"_id": 0}, sort=[("generated_at", -1)])
     if not s:
         return {"snapshot_id": None, "generated_at": None, "summary": [], "lines": [], "variances": []}
@@ -676,8 +727,8 @@ async def get_pl(engagement_id: str, current=Depends(get_current_user)):
 
 
 @router.get("/audit-engagements/{engagement_id}/cash-flow")
-async def get_cf(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def get_cf(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     s = await db.ca_fs_snapshots.find_one({"engagement_id": engagement_id}, {"_id": 0}, sort=[("generated_at", -1)])
     if not s:
         return {"snapshot_id": None, "generated_at": None, "summary": [], "lines": []}
@@ -691,12 +742,13 @@ async def get_cf(engagement_id: str, current=Depends(get_current_user)):
 
 @router.get("/audit-engagements/{engagement_id}/fs/drilldown")
 async def fs_drilldown(
+    request: Request,
     engagement_id: str,
     account_code: str = Query(..., min_length=1),
     current=Depends(get_current_user),
 ):
     """Return demo ledger postings for a trial balance account (drill to journal)."""
-    await _engagement_or_404(engagement_id)
+    await _engagement_or_404(engagement_id, current=current, request=request)
     code = (account_code or "").strip()
     if not code:
         raise HTTPException(400, "account_code is required")
@@ -716,24 +768,24 @@ async def fs_drilldown(
 
 
 @router.get("/audit-engagements/{engagement_id}/audit-adjustments")
-async def list_audit_adjustments(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def list_audit_adjustments(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     cur = db.ca_audit_adjustments.find({"engagement_id": engagement_id}, {"_id": 0}).sort("created_at", -1).limit(500)
     rows = await cur.to_list(length=500)
     return {"items": rows}
 
 
 @router.post("/audit-engagements/{engagement_id}/audit-adjustments")
-async def create_adjustment(engagement_id: str, body: sch.AuditAdjustmentCreate, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def create_adjustment(request: Request, engagement_id: str, body: sch.AuditAdjustmentCreate, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     adj = {"id": str(uuid.uuid4()), "engagement_id": engagement_id, **body.model_dump(), "created_at": _now()}
     await db.ca_audit_adjustments.insert_one(dict(adj))
     return adj
 
 
 @router.post("/audit-adjustments")
-async def create_adjustment_root(body: sch.AuditAdjustmentCreateRoot, current=Depends(get_current_user)):
-    await _engagement_or_404(body.engagement_id)
+async def create_adjustment_root(request: Request, body: sch.AuditAdjustmentCreateRoot, current=Depends(get_current_user)):
+    await _engagement_or_404(body.engagement_id, current=current, request=request)
     payload = body.model_dump()
     eid = payload.pop("engagement_id")
     adj = {"id": str(uuid.uuid4()), "engagement_id": eid, **payload, "created_at": _now()}
@@ -742,10 +794,11 @@ async def create_adjustment_root(body: sch.AuditAdjustmentCreateRoot, current=De
 
 
 @router.put("/audit-adjustments/{adjustment_id}")
-async def update_adjustment(adjustment_id: str, body: sch.AuditAdjustmentUpdate, current=Depends(get_current_user)):
+async def update_adjustment(adjustment_id: str, body: sch.AuditAdjustmentUpdate, request: Request, current=Depends(get_current_user)):
     a = await db.ca_audit_adjustments.find_one({"id": adjustment_id}, {"_id": 0})
     if not a:
         raise HTTPException(404, "Adjustment not found")
+    await _assert_engagement_scope_for_doc(a, current=current, request=request, not_found_detail="Adjustment not found")
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     await db.ca_audit_adjustments.update_one({"id": adjustment_id}, {"$set": patch})
     return await db.ca_audit_adjustments.find_one({"id": adjustment_id}, {"_id": 0})
@@ -794,9 +847,9 @@ async def _ensure_schedule_document(engagement_id: str, schedule_type: str) -> D
 
 
 @router.get("/audit-engagements/{engagement_id}/schedules")
-async def list_schedule_audit_modules(engagement_id: str, current=Depends(get_current_user)):
+async def list_schedule_audit_modules(request: Request, engagement_id: str, current=Depends(get_current_user)):
     """Dashboard summary: each statutory schedule area with flags and sign-off state."""
-    await _engagement_or_404(engagement_id)
+    await _engagement_or_404(engagement_id, current=current, request=request)
     items: List[Dict[str, Any]] = []
     for st in ca_sched.SCHEDULE_TYPES:
         doc = await db.ca_schedule_audit.find_one({"engagement_id": engagement_id, "schedule_type": st}, {"_id": 0})
@@ -835,8 +888,8 @@ async def list_schedule_audit_modules(engagement_id: str, current=Depends(get_cu
 
 
 @router.get("/audit-engagements/{engagement_id}/schedules/{schedule_type}")
-async def get_schedule(engagement_id: str, schedule_type: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def get_schedule(request: Request, engagement_id: str, schedule_type: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     st = _validate_schedule_type(schedule_type)
     doc = await _ensure_schedule_document(engagement_id, st)
     return ca_sched.augment_schedule_for_api(doc)
@@ -847,8 +900,13 @@ async def get_schedule(engagement_id: str, schedule_type: str, current=Depends(g
 
 @router.post("/audit-engagements/{engagement_id}/schedules/{schedule_type}/conclusion")
 async def schedule_conclusion(
-    engagement_id: str, schedule_type: str, body: sch.ScheduleConclusionIn, current=Depends(get_current_user),
+    request: Request,
+    engagement_id: str,
+    schedule_type: str,
+    body: sch.ScheduleConclusionIn,
+    current=Depends(get_current_user),
 ):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     st = _validate_schedule_type(schedule_type)
     await _ensure_schedule_document(engagement_id, st)
     row = body.model_dump()
@@ -864,8 +922,13 @@ async def schedule_conclusion(
 
 @router.post("/audit-engagements/{engagement_id}/schedules/{schedule_type}/evidence")
 async def schedule_attach_evidence(
-    engagement_id: str, schedule_type: str, body: sch.ScheduleEvidenceAttachIn, current=Depends(get_current_user),
+    request: Request,
+    engagement_id: str,
+    schedule_type: str,
+    body: sch.ScheduleEvidenceAttachIn,
+    current=Depends(get_current_user),
 ):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     st = _validate_schedule_type(schedule_type)
     await _ensure_schedule_document(engagement_id, st)
     ev = {
@@ -886,12 +949,14 @@ async def schedule_attach_evidence(
 
 @router.put("/audit-engagements/{engagement_id}/schedules/{schedule_type}/procedures/{procedure_id}")
 async def schedule_procedure_status(
+    request: Request,
     engagement_id: str,
     schedule_type: str,
     procedure_id: str,
     body: sch.ScheduleProcedureStatusIn,
     current=Depends(get_current_user),
 ):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     st = _validate_schedule_type(schedule_type)
     doc = await _ensure_schedule_document(engagement_id, st)
     procs = list(doc.get("audit_procedures") or [])
@@ -913,8 +978,13 @@ async def schedule_procedure_status(
 
 @router.post("/audit-engagements/{engagement_id}/schedules/{schedule_type}/exception")
 async def schedule_exception(
-    engagement_id: str, schedule_type: str, body: sch.ScheduleExceptionIn, current=Depends(get_current_user),
+    request: Request,
+    engagement_id: str,
+    schedule_type: str,
+    body: sch.ScheduleExceptionIn,
+    current=Depends(get_current_user),
 ):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     st = _validate_schedule_type(schedule_type)
     await _ensure_schedule_document(engagement_id, st)
     ex = {"id": str(uuid.uuid4()), **body.model_dump(), "created_at": _now()}
@@ -990,17 +1060,23 @@ def _ifc_seed_rows() -> List[Dict[str, Any]]:
 
 
 @router.get("/control-library")
-async def control_library(current=Depends(get_current_user)):
+async def control_library(
+    entity_code: Optional[str] = Query(None, description="Legal entity key; enforced when RBAC entity scope is on."),
+    current=Depends(get_current_user),
+):
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = [i async for i in db.ca_control_library.find({}, {"_id": 0}).limit(500)]
     if not items:
         seed = _ifc_seed_rows()
         await db.ca_control_library.insert_many(seed)
         items = seed
-    return [ifc_svc.enrich_library_item(dict(i)) for i in items]
+    enriched = [ifc_svc.enrich_library_item(dict(i)) for i in items]
+    return {"entity_code": eff, "items": enriched}
 
 
 @router.post("/control-library")
 async def add_control_library_item(body: sch.ControlLibraryItemIn, current=Depends(get_current_user)):
+    await assert_super_admin_when_entity_scope_enforced(db, current=current)
     raw = body.model_dump()
     doc = {"id": str(uuid.uuid4()), **ifc_svc.normalize_library_write(raw)}
     doc = ifc_svc.enrich_library_item(doc)
@@ -1009,8 +1085,8 @@ async def add_control_library_item(body: sch.ControlLibraryItemIn, current=Depen
 
 
 @router.post("/audit-engagements/{engagement_id}/control-tests")
-async def create_control_test(engagement_id: str, body: sch.ControlTestCreate, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def create_control_test(request: Request, engagement_id: str, body: sch.ControlTestCreate, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     lib_key = body.control_library_id or body.control_id
     proc: Optional[str] = None
     if lib_key:
@@ -1031,22 +1107,22 @@ async def create_control_test(engagement_id: str, body: sch.ControlTestCreate, c
 
 
 @router.get("/audit-engagements/{engagement_id}/control-tests")
-async def list_control_tests(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def list_control_tests(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     return [t async for t in db.ca_control_tests.find({"engagement_id": engagement_id}, {"_id": 0})]
 
 
 @router.get("/audit-engagements/{engagement_id}/ifc-heatmap")
-async def ifc_heatmap(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def ifc_heatmap(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     tests = [t async for t in db.ca_control_tests.find({"engagement_id": engagement_id}, {"_id": 0})]
     lib_raw = await db.ca_control_library.find({}, {"_id": 0}).to_list(length=2000)
     return ifc_svc.build_ifc_heatmap(tests, lib_raw)
 
 
 @router.get("/audit-engagements/{engagement_id}/ifc-dashboard")
-async def ifc_dashboard(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def ifc_dashboard(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     tests = [t async for t in db.ca_control_tests.find({"engagement_id": engagement_id}, {"_id": 0})]
     defs = [d async for d in db.ca_control_deficiencies.find({"engagement_id": engagement_id}, {"_id": 0}).sort("created_at", -1).limit(200)]
     certs = [c async for c in db.ca_control_certifications.find({"engagement_id": engagement_id}, {"_id": 0}).sort("created_at", -1).limit(100)]
@@ -1071,18 +1147,20 @@ async def ifc_dashboard(engagement_id: str, current=Depends(get_current_user)):
 
 
 @router.get("/control-tests/{test_id}")
-async def get_control_test(test_id: str, current=Depends(get_current_user)):
+async def get_control_test(test_id: str, request: Request, current=Depends(get_current_user)):
     t = await db.ca_control_tests.find_one({"id": test_id}, {"_id": 0})
     if not t:
         raise HTTPException(404, "Control test not found")
+    await _assert_engagement_scope_for_doc(t, current=current, request=request, not_found_detail="Control test not found")
     return t
 
 
 @router.put("/control-tests/{test_id}/result")
-async def set_control_test_result(test_id: str, body: sch.ControlTestResultIn, current=Depends(get_current_user)):
+async def set_control_test_result(test_id: str, body: sch.ControlTestResultIn, request: Request, current=Depends(get_current_user)):
     t = await db.ca_control_tests.find_one({"id": test_id}, {"_id": 0})
     if not t:
         raise HTTPException(404, "Control test not found")
+    await _assert_engagement_scope_for_doc(t, current=current, request=request, not_found_detail="Control test not found")
     dump = body.model_dump(exclude_unset=True)
     patch: Dict[str, Any] = {"updated_at": _now()}
     eff = dump.get("effectiveness_score")
@@ -1110,14 +1188,15 @@ async def set_control_test_result(test_id: str, body: sch.ControlTestResultIn, c
 
 
 @router.get("/audit-engagements/{engagement_id}/control-deficiencies")
-async def list_control_deficiencies(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def list_control_deficiencies(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     cur = db.ca_control_deficiencies.find({"engagement_id": engagement_id}, {"_id": 0}).sort("created_at", -1).limit(500)
     return {"items": await cur.to_list(length=500)}
 
 
 @router.post("/control-deficiencies")
-async def create_deficiency(body: sch.ControlDeficiencyCreate, current=Depends(get_current_user)):
+async def create_deficiency(body: sch.ControlDeficiencyCreate, request: Request, current=Depends(get_current_user)):
+    await _engagement_or_404(body.engagement_id, current=current, request=request)
     doc = {
         "id": str(uuid.uuid4()),
         **body.model_dump(),
@@ -1156,10 +1235,11 @@ async def create_deficiency(body: sch.ControlDeficiencyCreate, current=Depends(g
 
 
 @router.put("/control-deficiencies/{deficiency_id}")
-async def update_deficiency(deficiency_id: str, body: sch.ControlDeficiencyUpdate, current=Depends(get_current_user)):
+async def update_deficiency(deficiency_id: str, body: sch.ControlDeficiencyUpdate, request: Request, current=Depends(get_current_user)):
     d = await db.ca_control_deficiencies.find_one({"id": deficiency_id}, {"_id": 0})
     if not d:
         raise HTTPException(404, "Deficiency not found")
+    await _assert_engagement_scope_for_doc(d, current=current, request=request, not_found_detail="Deficiency not found")
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     if patch:
         patch["updated_at"] = _now()
@@ -1168,10 +1248,11 @@ async def update_deficiency(deficiency_id: str, body: sch.ControlDeficiencyUpdat
 
 
 @router.post("/control-deficiencies/{deficiency_id}/management-response")
-async def mgmt_response(deficiency_id: str, body: sch.ManagementResponseIn, current=Depends(get_current_user)):
+async def mgmt_response(deficiency_id: str, body: sch.ManagementResponseIn, request: Request, current=Depends(get_current_user)):
     d = await db.ca_control_deficiencies.find_one({"id": deficiency_id}, {"_id": 0})
     if not d:
         raise HTTPException(404, "Deficiency not found")
+    await _assert_engagement_scope_for_doc(d, current=current, request=request, not_found_detail="Deficiency not found")
     await db.ca_control_deficiencies.update_one(
         {"id": deficiency_id},
         {"$set": {"management_response": {**body.model_dump(), "at": _now()}, "updated_at": _now()}},
@@ -1180,8 +1261,8 @@ async def mgmt_response(deficiency_id: str, body: sch.ManagementResponseIn, curr
 
 
 @router.post("/control-certifications")
-async def control_cert(body: sch.ControlCertificationIn, current=Depends(get_current_user)):
-    await _engagement_or_404(body.engagement_id)
+async def control_cert(request: Request, body: sch.ControlCertificationIn, current=Depends(get_current_user)):
+    await _engagement_or_404(body.engagement_id, current=current, request=request)
     doc = {"id": str(uuid.uuid4()), **body.model_dump(), "created_at": _now()}
     await db.ca_control_certifications.insert_one(dict(doc))
     return doc
@@ -1189,8 +1270,8 @@ async def control_cert(body: sch.ControlCertificationIn, current=Depends(get_cur
 
 # ----- Working papers -----
 @router.post("/audit-engagements/{engagement_id}/working-papers/folders")
-async def seed_wp_folders(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def seed_wp_folders(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     if await db.ca_wp_folders.count_documents({"engagement_id": engagement_id}) == 0:
         rows = [{**f, "engagement_id": engagement_id} for f in default_wp_folders()]
         await db.ca_wp_folders.insert_many(rows)
@@ -1198,22 +1279,26 @@ async def seed_wp_folders(engagement_id: str, current=Depends(get_current_user))
 
 
 @router.get("/audit-engagements/{engagement_id}/working-papers")
-async def list_wp(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def list_wp(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     folders = [f async for f in db.ca_wp_folders.find({"engagement_id": engagement_id}, {"_id": 0})]
     if not folders:
-        await seed_wp_folders(engagement_id, current)
+        if await db.ca_wp_folders.count_documents({"engagement_id": engagement_id}) == 0:
+            rows = [{**f, "engagement_id": engagement_id} for f in default_wp_folders()]
+            await db.ca_wp_folders.insert_many(rows)
         folders = [f async for f in db.ca_wp_folders.find({"engagement_id": engagement_id}, {"_id": 0})]
     papers = [p async for p in db.ca_working_papers.find({"engagement_id": engagement_id}, {"_id": 0})]
     return {"folders": folders, "working_papers": papers}
 
 
 @router.get("/audit-engagements/{engagement_id}/wp-workbench")
-async def wp_workbench(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def wp_workbench(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     folders = [f async for f in db.ca_wp_folders.find({"engagement_id": engagement_id}, {"_id": 0})]
     if not folders:
-        await seed_wp_folders(engagement_id, current)
+        if await db.ca_wp_folders.count_documents({"engagement_id": engagement_id}) == 0:
+            rows = [{**f, "engagement_id": engagement_id} for f in default_wp_folders()]
+            await db.ca_wp_folders.insert_many(rows)
         folders = [f async for f in db.ca_wp_folders.find({"engagement_id": engagement_id}, {"_id": 0})]
     papers = [p async for p in db.ca_working_papers.find({"engagement_id": engagement_id}, {"_id": 0})]
     plans = [p async for p in db.ca_sampling_plans.find({"engagement_id": engagement_id}, {"_id": 0}).sort("created_at", -1).limit(100)]
@@ -1222,22 +1307,22 @@ async def wp_workbench(engagement_id: str, current=Depends(get_current_user)):
 
 
 @router.get("/audit-engagements/{engagement_id}/sampling-plans")
-async def list_sampling_plans(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def list_sampling_plans(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     cur = db.ca_sampling_plans.find({"engagement_id": engagement_id}, {"_id": 0}).sort("created_at", -1).limit(200)
     return {"items": await cur.to_list(length=200)}
 
 
 @router.get("/audit-engagements/{engagement_id}/vouching-items")
-async def list_vouching_items(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def list_vouching_items(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     cur = db.ca_vouching_items.find({"engagement_id": engagement_id}, {"_id": 0}).sort("created_at", -1).limit(500)
     return {"items": await cur.to_list(length=500)}
 
 
 @router.post("/working-papers")
-async def create_wp(body: sch.WorkingPaperCreate, current=Depends(get_current_user)):
-    await _engagement_or_404(body.engagement_id)
+async def create_wp(request: Request, body: sch.WorkingPaperCreate, current=Depends(get_current_user)):
+    await _engagement_or_404(body.engagement_id, current=current, request=request)
     dump = body.model_dump()
     refs = [r for r in dump.pop("references", []) or []]
     ref = dump.get("reference") or await wp_svc.next_working_paper_reference(db, body.engagement_id, body.folder_id)
@@ -1257,10 +1342,11 @@ async def create_wp(body: sch.WorkingPaperCreate, current=Depends(get_current_us
 
 
 @router.get("/working-papers/{working_paper_id}")
-async def get_wp(working_paper_id: str, current=Depends(get_current_user)):
+async def get_wp(working_paper_id: str, request: Request, current=Depends(get_current_user)):
     p = await db.ca_working_papers.find_one({"id": working_paper_id}, {"_id": 0})
     if not p:
         raise HTTPException(404, "Working paper not found")
+    await _assert_engagement_scope_for_doc(p, current=current, request=request, not_found_detail="Working paper not found")
     notes = [n async for n in db.ca_wp_review_notes.find({"working_paper_id": working_paper_id}, {"_id": 0})]
     signs = [s async for s in db.ca_wp_signoffs.find({"working_paper_id": working_paper_id}, {"_id": 0})]
     ev = [e async for e in db.ca_audit_evidence.find({"working_paper_id": working_paper_id}, {"_id": 0}).sort("created_at", -1).limit(200)]
@@ -1268,10 +1354,11 @@ async def get_wp(working_paper_id: str, current=Depends(get_current_user)):
 
 
 @router.put("/working-papers/{working_paper_id}")
-async def update_wp(working_paper_id: str, body: sch.WorkingPaperUpdate, current=Depends(get_current_user)):
+async def update_wp(working_paper_id: str, body: sch.WorkingPaperUpdate, request: Request, current=Depends(get_current_user)):
     p = await db.ca_working_papers.find_one({"id": working_paper_id}, {"_id": 0})
     if not p:
         raise HTTPException(404, "Working paper not found")
+    await _assert_engagement_scope_for_doc(p, current=current, request=request, not_found_detail="Working paper not found")
     dump = body.model_dump(exclude_unset=True)
     refs = dump.pop("references", "__unset__")
     patch = {k: v for k, v in dump.items() if v is not None}
@@ -1283,10 +1370,11 @@ async def update_wp(working_paper_id: str, body: sch.WorkingPaperUpdate, current
 
 
 @router.post("/working-papers/{working_paper_id}/evidence")
-async def attach_wp_evidence(working_paper_id: str, body: sch.AuditEvidenceIn, current=Depends(get_current_user)):
+async def attach_wp_evidence(working_paper_id: str, body: sch.AuditEvidenceIn, request: Request, current=Depends(get_current_user)):
     wp = await db.ca_working_papers.find_one({"id": working_paper_id}, {"_id": 0})
     if not wp:
         raise HTTPException(404, "Working paper not found")
+    await _assert_engagement_scope_for_doc(wp, current=current, request=request, not_found_detail="Working paper not found")
     eid = wp.get("engagement_id")
     doc = {
         "id": str(uuid.uuid4()),
@@ -1304,36 +1392,39 @@ async def attach_wp_evidence(working_paper_id: str, body: sch.AuditEvidenceIn, c
 
 
 @router.get("/working-papers/{working_paper_id}/evidence")
-async def list_wp_evidence(working_paper_id: str, current=Depends(get_current_user)):
+async def list_wp_evidence(working_paper_id: str, request: Request, current=Depends(get_current_user)):
     wp = await db.ca_working_papers.find_one({"id": working_paper_id}, {"_id": 0})
     if not wp:
         raise HTTPException(404, "Working paper not found")
+    await _assert_engagement_scope_for_doc(wp, current=current, request=request, not_found_detail="Working paper not found")
     cur = db.ca_audit_evidence.find({"working_paper_id": working_paper_id}, {"_id": 0}).sort("created_at", -1).limit(200)
     return {"items": await cur.to_list(length=200)}
 
 
 @router.post("/sampling-plans")
-async def create_sampling(body: sch.SamplingPlanCreate, current=Depends(get_current_user)):
-    await _engagement_or_404(body.engagement_id)
+async def create_sampling(request: Request, body: sch.SamplingPlanCreate, current=Depends(get_current_user)):
+    await _engagement_or_404(body.engagement_id, current=current, request=request)
     doc = {"id": str(uuid.uuid4()), **body.model_dump(), "created_at": _now()}
     await db.ca_sampling_plans.insert_one(dict(doc))
     return doc
 
 
 @router.get("/sampling-plans/{sampling_plan_id}/samples")
-async def list_plan_samples(sampling_plan_id: str, current=Depends(get_current_user)):
+async def list_plan_samples(sampling_plan_id: str, request: Request, current=Depends(get_current_user)):
     sp = await db.ca_sampling_plans.find_one({"id": sampling_plan_id}, {"_id": 0})
     if not sp:
         raise HTTPException(404, "Sampling plan not found")
+    await _assert_engagement_scope_for_doc(sp, current=current, request=request, not_found_detail="Sampling plan not found")
     cur = db.ca_sample_transactions.find({"sampling_plan_id": sampling_plan_id}, {"_id": 0}).sort("idx", 1).limit(5000)
     return {"items": await cur.to_list(length=5000)}
 
 
 @router.post("/sampling-plans/{sampling_plan_id}/generate")
-async def generate_samples(sampling_plan_id: str, current=Depends(get_current_user)):
+async def generate_samples(sampling_plan_id: str, request: Request, current=Depends(get_current_user)):
     sp = await db.ca_sampling_plans.find_one({"id": sampling_plan_id}, {"_id": 0})
     if not sp:
         raise HTTPException(404, "Sampling plan not found")
+    await _assert_engagement_scope_for_doc(sp, current=current, request=request, not_found_detail="Sampling plan not found")
     await db.ca_sample_transactions.delete_many({"sampling_plan_id": sampling_plan_id})
     samples = wp_svc.sample_rows_for_plan(dict(sp))
     if samples:
@@ -1346,15 +1437,19 @@ async def generate_samples(sampling_plan_id: str, current=Depends(get_current_us
 
 
 @router.post("/vouching-items")
-async def create_vouch(body: sch.VouchingItemCreate, current=Depends(get_current_user)):
-    await _engagement_or_404(body.engagement_id)
+async def create_vouch(request: Request, body: sch.VouchingItemCreate, current=Depends(get_current_user)):
+    await _engagement_or_404(body.engagement_id, current=current, request=request)
     doc = {"id": str(uuid.uuid4()), **body.model_dump(), "created_at": _now()}
     await db.ca_vouching_items.insert_one(dict(doc))
     return doc
 
 
 @router.put("/vouching-items/{vouching_item_id}")
-async def update_vouch(vouching_item_id: str, body: sch.VouchingItemUpdate, current=Depends(get_current_user)):
+async def update_vouch(vouching_item_id: str, body: sch.VouchingItemUpdate, request: Request, current=Depends(get_current_user)):
+    v0 = await db.ca_vouching_items.find_one({"id": vouching_item_id}, {"_id": 0})
+    if not v0:
+        raise HTTPException(404, "Vouching item not found")
+    await _assert_engagement_scope_for_doc(v0, current=current, request=request, not_found_detail="Vouching item not found")
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
     if patch:
         patch["updated_at"] = _now()
@@ -1363,10 +1458,11 @@ async def update_vouch(vouching_item_id: str, body: sch.VouchingItemUpdate, curr
 
 
 @router.post("/working-papers/{working_paper_id}/review-notes")
-async def wp_review_note(working_paper_id: str, body: sch.ReviewNoteIn, current=Depends(get_current_user)):
+async def wp_review_note(working_paper_id: str, body: sch.ReviewNoteIn, request: Request, current=Depends(get_current_user)):
     wp = await db.ca_working_papers.find_one({"id": working_paper_id}, {"_id": 0})
     if not wp:
         raise HTTPException(404, "Working paper not found")
+    await _assert_engagement_scope_for_doc(wp, current=current, request=request, not_found_detail="Working paper not found")
     doc = {"id": str(uuid.uuid4()), "working_paper_id": working_paper_id, **body.model_dump(), "created_at": _now()}
     await db.ca_wp_review_notes.insert_one(dict(doc))
     await db.ca_working_papers.update_one({"id": working_paper_id}, {"$set": {"updated_at": _now()}})
@@ -1374,10 +1470,11 @@ async def wp_review_note(working_paper_id: str, body: sch.ReviewNoteIn, current=
 
 
 @router.post("/working-papers/{working_paper_id}/sign-off")
-async def wp_signoff(working_paper_id: str, body: sch.SignOffIn, current=Depends(get_current_user)):
+async def wp_signoff(working_paper_id: str, body: sch.SignOffIn, request: Request, current=Depends(get_current_user)):
     wp = await db.ca_working_papers.find_one({"id": working_paper_id}, {"_id": 0})
     if not wp:
         raise HTTPException(404, "Working paper not found")
+    await _assert_engagement_scope_for_doc(wp, current=current, request=request, not_found_detail="Working paper not found")
     doc = {"id": str(uuid.uuid4()), "working_paper_id": working_paper_id, **body.model_dump(), "signed_at": _now()}
     await db.ca_wp_signoffs.insert_one(dict(doc))
     wp_patch: Dict[str, Any] = {"updated_at": _now()}
@@ -1393,9 +1490,14 @@ async def wp_signoff(working_paper_id: str, body: sch.SignOffIn, current=Depends
 
 # ----- India compliance (library + checklists) -----
 @router.get("/compliance/library")
-async def compliance_library(current=Depends(get_current_user)):
+async def compliance_library(
+    entity_code: Optional[str] = Query(None, description="Legal entity key; enforced when RBAC entity scope is on."),
+    current=Depends(get_current_user),
+):
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     laws = ind_ce.compliance_laws_catalog()
     return {
+        "entity_code": eff,
         "laws": laws,
         "modules": [
             {"code": "CA2013", "label": "Companies Act 2013 checklist"},
@@ -1408,8 +1510,8 @@ async def compliance_library(current=Depends(get_current_user)):
 
 
 @router.post("/audit-engagements/{engagement_id}/compliance/checklist")
-async def create_compliance_checklist(engagement_id: str, body: sch.ComplianceChecklistCreate, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def create_compliance_checklist(request: Request, engagement_id: str, body: sch.ComplianceChecklistCreate, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     laws = body.law_codes or ["CA2013", "IT1961", "GST", "TDS", "CARO", "44AB"]
     reqs = compliance_rows_for_laws(laws)
     now = _now()
@@ -1419,8 +1521,8 @@ async def create_compliance_checklist(engagement_id: str, body: sch.ComplianceCh
 
 
 @router.get("/audit-engagements/{engagement_id}/compliance/export")
-async def export_compliance_checklist(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def export_compliance_checklist(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     doc = await db.ca_compliance_results.find_one({"engagement_id": engagement_id}, {"_id": 0})
     reqs = (doc or {}).get("requirements") or []
     csv_body = ind_ce.compliance_requirements_to_csv_rows(reqs)
@@ -1433,8 +1535,8 @@ async def export_compliance_checklist(engagement_id: str, current=Depends(get_cu
 
 
 @router.post("/audit-engagements/{engagement_id}/compliance/findings")
-async def create_compliance_finding(engagement_id: str, body: sch.ComplianceFindingIn, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def create_compliance_finding(request: Request, engagement_id: str, body: sch.ComplianceFindingIn, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     doc = {
         "id": str(uuid.uuid4()),
         "engagement_id": engagement_id,
@@ -1451,15 +1553,15 @@ async def create_compliance_finding(engagement_id: str, body: sch.ComplianceFind
 
 
 @router.get("/audit-engagements/{engagement_id}/compliance/findings")
-async def list_compliance_findings(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def list_compliance_findings(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     cur = db.ca_compliance_findings.find({"engagement_id": engagement_id}, {"_id": 0}).sort("created_at", -1).limit(500)
     return {"items": await cur.to_list(length=500)}
 
 
 @router.post("/audit-engagements/{engagement_id}/compliance/result")
-async def compliance_update_result(engagement_id: str, body: sch.ComplianceResultUpdate, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def compliance_update_result(request: Request, engagement_id: str, body: sch.ComplianceResultUpdate, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     doc = await db.ca_compliance_results.find_one({"engagement_id": engagement_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Compliance checklist not found — create checklist first")
@@ -1505,8 +1607,8 @@ async def compliance_update_result(engagement_id: str, body: sch.ComplianceResul
 
 
 @router.get("/audit-engagements/{engagement_id}/compliance/status")
-async def compliance_status(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def compliance_status(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     doc = await db.ca_compliance_results.find_one({"engagement_id": engagement_id}, {"_id": 0})
     findings_n = await db.ca_compliance_findings.count_documents({"engagement_id": engagement_id})
     gst_cur = db.ca_gst_rec.find({"engagement_id": engagement_id}, {"_id": 0}).sort("at", -1).limit(1)
@@ -1545,17 +1647,17 @@ def _gst_doc(engagement_id: str, body: sch.GstReconciliationIn) -> Dict[str, Any
 
 
 @router.post("/audit-engagements/{engagement_id}/gst/reconciliation")
-async def gst_rec(engagement_id: str, body: sch.GstReconciliationIn, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def gst_rec(request: Request, engagement_id: str, body: sch.GstReconciliationIn, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     doc = _gst_doc(engagement_id, body)
     await db.ca_gst_rec.insert_one(dict(doc))
     return doc
 
 
 @router.post("/gst/reconciliation")
-async def gst_reconciliation_root(body: sch.GstReconciliationWithEngagement, current=Depends(get_current_user)):
+async def gst_reconciliation_root(request: Request, body: sch.GstReconciliationWithEngagement, current=Depends(get_current_user)):
     """Top-level alias: same as POST /audit-engagements/{id}/gst/reconciliation (engagement_id in body)."""
-    await _engagement_or_404(body.engagement_id)
+    await _engagement_or_404(body.engagement_id, current=current, request=request)
     inner = sch.GstReconciliationIn(**body.model_dump(exclude={"engagement_id"}))
     doc = _gst_doc(body.engagement_id, inner)
     await db.ca_gst_rec.insert_one(dict(doc))
@@ -1563,8 +1665,8 @@ async def gst_reconciliation_root(body: sch.GstReconciliationWithEngagement, cur
 
 
 @router.get("/audit-engagements/{engagement_id}/gst/reconciliation")
-async def list_gst_reconciliations(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def list_gst_reconciliations(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     cur = db.ca_gst_rec.find({"engagement_id": engagement_id}, {"_id": 0}).sort("at", -1).limit(50)
     return {"items": await cur.to_list(length=50)}
 
@@ -1576,16 +1678,16 @@ def _tds_doc(engagement_id: str, body: sch.TdsReconciliationIn) -> Dict[str, Any
 
 
 @router.post("/audit-engagements/{engagement_id}/tds/reconciliation")
-async def tds_rec(engagement_id: str, body: sch.TdsReconciliationIn, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def tds_rec(request: Request, engagement_id: str, body: sch.TdsReconciliationIn, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     doc = _tds_doc(engagement_id, body)
     await db.ca_tds_rec.insert_one(dict(doc))
     return doc
 
 
 @router.post("/tds/reconciliation")
-async def tds_reconciliation_root(body: sch.TdsReconciliationWithEngagement, current=Depends(get_current_user)):
-    await _engagement_or_404(body.engagement_id)
+async def tds_reconciliation_root(request: Request, body: sch.TdsReconciliationWithEngagement, current=Depends(get_current_user)):
+    await _engagement_or_404(body.engagement_id, current=current, request=request)
     inner = sch.TdsReconciliationIn(**body.model_dump(exclude={"engagement_id"}))
     doc = _tds_doc(body.engagement_id, inner)
     await db.ca_tds_rec.insert_one(dict(doc))
@@ -1593,15 +1695,15 @@ async def tds_reconciliation_root(body: sch.TdsReconciliationWithEngagement, cur
 
 
 @router.get("/audit-engagements/{engagement_id}/tds/reconciliation")
-async def list_tds_reconciliations(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def list_tds_reconciliations(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     cur = db.ca_tds_rec.find({"engagement_id": engagement_id}, {"_id": 0}).sort("at", -1).limit(50)
     return {"items": await cur.to_list(length=50)}
 
 
 @router.post("/audit-engagements/{engagement_id}/caro/checklist")
-async def caro_checklist(engagement_id: str, body: sch.CaroChecklistIn, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def caro_checklist(request: Request, engagement_id: str, body: sch.CaroChecklistIn, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     clauses = body.clause_ids or ["3(i)", "3(ii)", "3(iii)"]
     doc = {
         "engagement_id": engagement_id,
@@ -1613,20 +1715,24 @@ async def caro_checklist(engagement_id: str, body: sch.CaroChecklistIn, current=
 
 
 @router.post("/caro/checklist")
-async def caro_checklist_root(body: sch.CaroChecklistWithEngagement, current=Depends(get_current_user)):
-    return await caro_checklist(body.engagement_id, sch.CaroChecklistIn(clause_ids=body.clause_ids), current)
+async def caro_checklist_root(
+    request: Request, body: sch.CaroChecklistWithEngagement, current=Depends(get_current_user)
+):
+    return await caro_checklist(
+        request, body.engagement_id, sch.CaroChecklistIn(clause_ids=body.clause_ids), current
+    )
 
 
 @router.get("/audit-engagements/{engagement_id}/caro/state")
-async def get_caro_state(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def get_caro_state(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     st = await db.ca_caro_state.find_one({"engagement_id": engagement_id}, {"_id": 0})
     return st or {"engagement_id": engagement_id, "caro_clauses": []}
 
 
 @router.post("/audit-engagements/{engagement_id}/caro/clause")
-async def update_caro_clause(engagement_id: str, body: sch.CaroClauseUpdate, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def update_caro_clause(request: Request, engagement_id: str, body: sch.CaroClauseUpdate, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     st = await db.ca_caro_state.find_one({"engagement_id": engagement_id}, {"_id": 0})
     if not st:
         raise HTTPException(404, "CARO checklist not found — create checklist first")
@@ -1646,8 +1752,8 @@ async def update_caro_clause(engagement_id: str, body: sch.CaroClauseUpdate, cur
 
 
 @router.post("/audit-engagements/{engagement_id}/tax-audit-44ab/checklist")
-async def tax44_checklist(engagement_id: str, body: sch.TaxAudit44abIn, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def tax44_checklist(request: Request, engagement_id: str, body: sch.TaxAudit44abIn, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     clauses = body.clause_ids or ["10A", "10B"]
     doc = {
         "engagement_id": engagement_id,
@@ -1659,15 +1765,15 @@ async def tax44_checklist(engagement_id: str, body: sch.TaxAudit44abIn, current=
 
 
 @router.get("/audit-engagements/{engagement_id}/tax-audit-44ab/state")
-async def get_tax44_state(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def get_tax44_state(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     st = await db.ca_tax44_state.find_one({"engagement_id": engagement_id}, {"_id": 0})
     return st or {"engagement_id": engagement_id, "clauses": []}
 
 
 @router.post("/audit-engagements/{engagement_id}/tax-audit-44ab/clause")
-async def update_tax44_clause(engagement_id: str, body: sch.Tax44ClauseUpdate, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def update_tax44_clause(request: Request, engagement_id: str, body: sch.Tax44ClauseUpdate, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     st = await db.ca_tax44_state.find_one({"engagement_id": engagement_id}, {"_id": 0})
     if not st:
         raise HTTPException(404, "44AB checklist not found — create checklist first")
@@ -1687,8 +1793,8 @@ async def update_tax44_clause(engagement_id: str, body: sch.Tax44ClauseUpdate, c
 
 
 @router.get("/audit-engagements/{engagement_id}/compliance-calendar")
-async def compliance_calendar(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def compliance_calendar(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     base = datetime.now(timezone.utc)
     events = [
         {"title": "CARO sign-off", "due": iso(base + timedelta(days=14))},
@@ -1701,8 +1807,8 @@ async def compliance_calendar(engagement_id: str, current=Depends(get_current_us
 
 # ----- Reporting -----
 @router.post("/audit-engagements/{engagement_id}/observations")
-async def create_observation(engagement_id: str, body: sch.AuditObservationCreate, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def create_observation(request: Request, engagement_id: str, body: sch.AuditObservationCreate, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     doc = {"id": str(uuid.uuid4()), "engagement_id": engagement_id, **body.model_dump(), "resolved": False, "created_at": _now()}
     await db.ca_audit_observations.insert_one(dict(doc))
     return doc
@@ -1710,9 +1816,10 @@ async def create_observation(engagement_id: str, body: sch.AuditObservationCreat
 
 @router.put("/audit-engagements/{engagement_id}/observations/{observation_id}")
 async def update_observation(
+    request: Request,
     engagement_id: str, observation_id: str, body: sch.AuditObservationUpdate, current=Depends(get_current_user)
 ):
-    await _engagement_or_404(engagement_id)
+    await _engagement_or_404(engagement_id, current=current, request=request)
     patch = {k: v for k, v in body.model_dump(exclude_unset=True).items() if v is not None}
     if not patch:
         row = await db.ca_audit_observations.find_one({"id": observation_id, "engagement_id": engagement_id}, {"_id": 0})
@@ -1729,14 +1836,14 @@ async def update_observation(
 
 
 @router.get("/audit-engagements/{engagement_id}/observations")
-async def list_observations(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def list_observations(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     return [o async for o in db.ca_audit_observations.find({"engagement_id": engagement_id}, {"_id": 0})]
 
 
 @router.post("/audit-engagements/{engagement_id}/audit-findings")
-async def create_audit_finding(engagement_id: str, body: sch.AuditFindingIn, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def create_audit_finding(request: Request, engagement_id: str, body: sch.AuditFindingIn, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     doc = {
         "id": str(uuid.uuid4()),
         "engagement_id": engagement_id,
@@ -1749,15 +1856,15 @@ async def create_audit_finding(engagement_id: str, body: sch.AuditFindingIn, cur
 
 
 @router.get("/audit-engagements/{engagement_id}/audit-findings")
-async def list_audit_findings(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def list_audit_findings(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     cur = db.ca_audit_findings.find({"engagement_id": engagement_id}, {"_id": 0}).sort("created_at", -1).limit(200)
     return {"items": await cur.to_list(length=200)}
 
 
 @router.post("/audit-engagements/{engagement_id}/opinion/generate")
-async def gen_opinion(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def gen_opinion(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     eng = await db.audit_engagements.find_one({"engagement_id": engagement_id}, {"_id": 0})
     obs = [o async for o in db.ca_audit_observations.find({"engagement_id": engagement_id}, {"_id": 0})]
     signals = await rpt_eng.gather_opinion_signals(db, engagement_id)
@@ -1774,16 +1881,16 @@ async def gen_opinion(engagement_id: str, current=Depends(get_current_user)):
 
 
 @router.get("/audit-engagements/{engagement_id}/opinion")
-async def get_opinion(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def get_opinion(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     cur = db.ca_audit_opinions.find({"engagement_id": engagement_id}, {"_id": 0}).sort("generated_at", -1).limit(1)
     docs = await cur.to_list(1)
     return docs[0] if docs else None
 
 
 @router.post("/audit-engagements/{engagement_id}/caro/generate")
-async def gen_caro(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def gen_caro(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     st = await db.ca_caro_state.find_one({"engagement_id": engagement_id}, {"_id": 0}) or {}
     clauses = st.get("caro_clauses") or [{"id": "3(i)", "status": "pending evidence"}]
     responses = [
@@ -1803,15 +1910,15 @@ async def gen_caro(engagement_id: str, current=Depends(get_current_user)):
 
 
 @router.get("/audit-engagements/{engagement_id}/caro/responses")
-async def get_caro_responses(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def get_caro_responses(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     row = await db.ca_caro_responses.find_one({"engagement_id": engagement_id}, {"_id": 0})
     return row or {"engagement_id": engagement_id, "responses": []}
 
 
 @router.post("/audit-engagements/{engagement_id}/report/generate")
-async def gen_report(engagement_id: str, current=Depends(get_current_user)):
-    eng = await _engagement_or_404(engagement_id)
+async def gen_report(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    eng = await _engagement_or_404(engagement_id, current=current, request=request)
     opinion = await db.ca_audit_opinions.find_one({"engagement_id": engagement_id}, {"_id": 0}, sort=[("generated_at", -1)])
     obs = [o async for o in db.ca_audit_observations.find({"engagement_id": engagement_id}, {"_id": 0})]
     caro = await db.ca_caro_responses.find_one({"engagement_id": engagement_id}, {"_id": 0})
@@ -1832,16 +1939,16 @@ async def gen_report(engagement_id: str, current=Depends(get_current_user)):
 
 
 @router.get("/audit-engagements/{engagement_id}/report")
-async def get_report(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def get_report(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     cur = db.ca_final_reports.find({"engagement_id": engagement_id}, {"_id": 0}).sort("created_at", -1).limit(1)
     docs = await cur.to_list(1)
     return docs[0] if docs else None
 
 
 @router.patch("/audit-engagements/{engagement_id}/report/status")
-async def patch_report_status(engagement_id: str, body: sch.FinalReportStatusIn, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def patch_report_status(request: Request, engagement_id: str, body: sch.FinalReportStatusIn, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     rep = await db.ca_final_reports.find_one({"engagement_id": engagement_id}, {"_id": 0}, sort=[("created_at", -1)])
     if not rep:
         raise HTTPException(404, "No report — generate a draft first")
@@ -1855,11 +1962,12 @@ async def patch_report_status(engagement_id: str, body: sch.FinalReportStatusIn,
 
 @router.get("/audit-engagements/{engagement_id}/report/export")
 async def export_report(
+    request: Request,
     engagement_id: str,
     format: str = Query("pdf", description="pdf | docx | xlsx | observations-xlsx"),
     current=Depends(get_current_user),
 ):
-    await _engagement_or_404(engagement_id)
+    await _engagement_or_404(engagement_id, current=current, request=request)
     obs = [o async for o in db.ca_audit_observations.find({"engagement_id": engagement_id}, {"_id": 0})]
     rep = await db.ca_final_reports.find_one({"engagement_id": engagement_id}, {"_id": 0}, sort=[("created_at", -1)])
     sections = (rep or {}).get("sections") or {}
@@ -1912,8 +2020,8 @@ async def export_report(
 
 
 @router.post("/audit-engagements/{engagement_id}/management-letter/generate")
-async def gen_mgmt_letter(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def gen_mgmt_letter(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     obs = [o async for o in db.ca_audit_observations.find({"engagement_id": engagement_id}, {"_id": 0})]
     text = "Management letter (demo): address open observations and remediation timelines.\n" + "\n".join(f"- {o['title']}" for o in obs[:10])
     doc = {"id": str(uuid.uuid4()), "engagement_id": engagement_id, "text": text, "created_at": _now()}
@@ -1922,8 +2030,8 @@ async def gen_mgmt_letter(engagement_id: str, current=Depends(get_current_user))
 
 
 @router.post("/audit-engagements/{engagement_id}/management-representation")
-async def mgmt_repr(engagement_id: str, body: sch.ManagementRepresentationIn, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def mgmt_repr(request: Request, engagement_id: str, body: sch.ManagementRepresentationIn, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     doc = {"id": str(uuid.uuid4()), "engagement_id": engagement_id, **body.model_dump(), "at": _now()}
     await db.ca_mgmt_repr.insert_one(dict(doc))
     return doc
@@ -1940,16 +2048,16 @@ async def _cc_tiles_async(engagement_id: str) -> Dict[str, Any]:
 
 
 @router.get("/audit-engagements/{engagement_id}/ca-command-center")
-async def ca_command_center(engagement_id: str, current=Depends(get_current_user)):
-    eng = await _engagement_or_404(engagement_id)
+async def ca_command_center(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    eng = await _engagement_or_404(engagement_id, current=current, request=request)
     summary = await _cc_tiles_async(engagement_id)
     return {"engagement": eng, "tiles": summary}
 
 
 @router.get("/audit-engagements/{engagement_id}/ca-dashboard")
-async def ca_dashboard(engagement_id: str, current=Depends(get_current_user)):
+async def ca_dashboard(request: Request, engagement_id: str, current=Depends(get_current_user)):
     """CA-grade consolidated dashboard: tiles, assurance scores, integration map, CFO advisory copy."""
-    eng = await _engagement_or_404(engagement_id)
+    eng = await _engagement_or_404(engagement_id, current=current, request=request)
     scores = await _compute_continuous_assurance(engagement_id, eng)
     tiles = await _cc_tiles_async(engagement_id)
     integration = await eng_int.build_integration_map(db, engagement_id)
@@ -1983,8 +2091,8 @@ async def ca_dashboard(engagement_id: str, current=Depends(get_current_user)):
 
 
 @router.get("/audit-engagements/{engagement_id}/advisory-insights")
-async def advisory_insights(engagement_id: str, current=Depends(get_current_user)):
-    eng = await _engagement_or_404(engagement_id)
+async def advisory_insights(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    eng = await _engagement_or_404(engagement_id, current=current, request=request)
     risks = [r async for r in db.ca_risks.find({"engagement_id": engagement_id}, {"_id": 0}).limit(80)]
     cases = [c async for c in db.cases.find({"engagement_id": engagement_id, "status": {"$ne": "closed"}}, {"_id": 0}).limit(80)]
     defs = [d async for d in db.ca_control_deficiencies.find({"engagement_id": engagement_id}, {"_id": 0}).limit(80)]
@@ -1996,8 +2104,8 @@ async def advisory_insights(engagement_id: str, current=Depends(get_current_user
 
 
 @router.get("/audit-engagements/{engagement_id}/executive-summary")
-async def executive_summary(engagement_id: str, current=Depends(get_current_user)):
-    eng = await _engagement_or_404(engagement_id)
+async def executive_summary(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    eng = await _engagement_or_404(engagement_id, current=current, request=request)
     scores = await _compute_continuous_assurance(engagement_id, eng)
     integration = await eng_int.build_integration_map(db, engagement_id)
     risks = [r async for r in db.ca_risks.find({"engagement_id": engagement_id}, {"_id": 0}).limit(40)]
@@ -2030,8 +2138,8 @@ async def executive_summary(engagement_id: str, current=Depends(get_current_user
 
 
 @router.get("/audit-engagements/{engagement_id}/audit-committee-pack")
-async def audit_committee_pack(engagement_id: str, current=Depends(get_current_user)):
-    eng = await _engagement_or_404(engagement_id)
+async def audit_committee_pack(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    eng = await _engagement_or_404(engagement_id, current=current, request=request)
     rep = await db.ca_final_reports.find_one({"engagement_id": engagement_id}, {"_id": 0}, sort=[("created_at", -1)])
     risks = [r async for r in db.ca_risks.find({"engagement_id": engagement_id, "risk_rating": {"$in": ["high", "critical"]}}, {"_id": 0}).limit(20)]
     cases = [c async for c in db.cases.find({"engagement_id": engagement_id}, {"_id": 0}).limit(20)]
@@ -2062,8 +2170,8 @@ async def audit_committee_pack(engagement_id: str, current=Depends(get_current_u
 
 
 @router.get("/audit-engagements/{engagement_id}/continuous-assurance-score")
-async def continuous_assurance_score(engagement_id: str, current=Depends(get_current_user)):
-    eng = await _engagement_or_404(engagement_id)
+async def continuous_assurance_score(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    eng = await _engagement_or_404(engagement_id, current=current, request=request)
     scores = await _compute_continuous_assurance(engagement_id, eng)
     return {
         **scores,
@@ -2079,8 +2187,8 @@ async def continuous_assurance_score(engagement_id: str, current=Depends(get_cur
 
 
 @router.get("/audit-engagements/{engagement_id}/management-action-summary")
-async def mgmt_actions(engagement_id: str, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def mgmt_actions(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     cases = [c async for c in db.cases.find({"engagement_id": engagement_id, "status": {"$ne": "closed"}}, {"_id": 0}).limit(100)]
     defs = [d async for d in db.ca_control_deficiencies.find({"engagement_id": engagement_id}, {"_id": 0}).limit(100)]
     return {"open_cases": cases, "deficiencies": defs}

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { http } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { SectionCard } from "../../components/PageShell";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../../components/DataTable";
 
@@ -10,6 +11,7 @@ const SOURCES = ["manual", "case", "control", "compliance", "fs", "schedule"];
 
 export default function ObservationBuilderPage() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState({
@@ -22,9 +24,9 @@ export default function ObservationBuilderPage() {
   });
 
   const load = useCallback(async () => {
-    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/observations`);
+    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/observations`, { params: dashboardParams });
     setRows(Array.isArray(data) ? data : []);
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     load().catch(() => toast.error("Failed to load observations"));
@@ -37,14 +39,18 @@ export default function ObservationBuilderPage() {
       return;
     }
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/observations`, {
-        title: form.title.trim(),
-        description: form.description.trim(),
-        severity: form.severity,
-        material: form.material,
-        pervasive: form.pervasive,
-        source: form.source,
-      });
+      await http.post(
+        `/audit-engagements/${encodeURIComponent(eid)}/observations`,
+        {
+          title: form.title.trim(),
+          description: form.description.trim(),
+          severity: form.severity,
+          material: form.material,
+          pervasive: form.pervasive,
+          source: form.source,
+        },
+        { params: dashboardParams },
+      );
       setForm((f) => ({ ...f, title: "", description: "" }));
       await load();
       toast.success("Observation added");
@@ -55,9 +61,13 @@ export default function ObservationBuilderPage() {
 
   const toggleResolved = async (row) => {
     try {
-      await http.put(`/audit-engagements/${encodeURIComponent(eid)}/observations/${encodeURIComponent(row.id)}`, {
-        resolved: !row.resolved,
-      });
+      await http.put(
+        `/audit-engagements/${encodeURIComponent(eid)}/observations/${encodeURIComponent(row.id)}`,
+        {
+          resolved: !row.resolved,
+        },
+        { params: dashboardParams },
+      );
       await load();
     } catch {
       toast.error("Update failed");

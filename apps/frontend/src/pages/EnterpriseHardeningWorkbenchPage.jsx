@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
@@ -9,11 +9,18 @@ import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import { StatCard } from "../components/StatCard";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
 import WaveProgramDeliveryPanel from "../components/WaveProgramDeliveryPanel";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 export default function EnterpriseHardeningWorkbenchPage() {
   const { user } = useAuth();
   const { drillToTarget } = useWorkbenchRowDrill();
   const [d, setD] = useState(null);
+  const dashboardParams = useDashboardFilterParams();
+  const complianceDepthParams = useMemo(() => {
+    const ec = dashboardParams.entity_code;
+    return ec ? { entity_code: ec } : {};
+  }, [dashboardParams.entity_code]);
+  const [govDepth, setGovDepth] = useState(null);
 
   useEffect(() => {
     if (user?.role !== "Super Admin") return undefined;
@@ -52,6 +59,26 @@ export default function EnterpriseHardeningWorkbenchPage() {
     return undefined;
   }, [user]);
 
+  useEffect(() => {
+    if (user?.role !== "Super Admin") {
+      setGovDepth(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const paths = ["/compliance-depth/rpt/register", "/compliance-depth/doa/rules", "/compliance-depth/sod/campaigns", "/compliance-depth/mdq/summary"];
+    Promise.all(paths.map((p) => http.get(p, { params: complianceDepthParams })))
+      .then(([rpt, doa, sod, mdq]) => {
+        if (cancelled) return;
+        setGovDepth({ rpt: rpt.data, doa: doa.data, sod: sod.data, mdq: mdq.data });
+      })
+      .catch(() => {
+        if (!cancelled) setGovDepth(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.role, complianceDepthParams]);
+
   if (!user) {
     return (
       <div className="crt-overline p-8 text-muted-foreground" data-testid="enterprise-hardening-workbench-loading">
@@ -84,6 +111,41 @@ export default function EnterpriseHardeningWorkbenchPage() {
         <WaveProgramDeliveryPanel />
 
         <MastersFilterStrip className="mb-6" />
+
+        {govDepth ? (
+          <SectionCard
+            kicker="COMPLIANCE DEPTH · L4"
+            title="Governance API stubs — query uses masters entity_code when set (Super Admin parity)"
+            bodyClassName="p-0"
+            className="mb-6"
+          >
+            <DataTable className="rounded-none border-0 bg-transparent" maxHeightClassName="max-h-[200px]" testId="eh40-gov-depth-table">
+              <DataTableHead>
+                <tr>
+                  <DataTableTh>Surface</DataTableTh>
+                  <DataTableTh>Entity echoed</DataTableTh>
+                  <DataTableTh>Note</DataTableTh>
+                </tr>
+              </DataTableHead>
+              <DataTableBody>
+                {[
+                  { key: "rpt", label: "RPT register", row: govDepth.rpt },
+                  { key: "doa", label: "DOA rules", row: govDepth.doa },
+                  { key: "sod", label: "SoD campaigns", row: govDepth.sod },
+                  { key: "mdq", label: "MDQ summary", row: govDepth.mdq },
+                ].map(({ key, label, row }) => (
+                  <DataTableRow key={key} testId={`eh40-gov-depth-${key}`}>
+                    <DataTableTd className="crt-num text-xs text-muted-foreground">{label}</DataTableTd>
+                    <DataTableTd className="crt-num text-xs">{row?.entity_code ?? "—"}</DataTableTd>
+                    <DataTableTd className="text-xs text-muted-foreground max-w-[480px] truncate" title={row?.note}>
+                      {row?.note || "—"}
+                    </DataTableTd>
+                  </DataTableRow>
+                ))}
+              </DataTableBody>
+            </DataTable>
+          </SectionCard>
+        ) : null}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
           <StatCard label="Liveness (public)" value={d.liveStatus} testId="eh40-kpi-live" />

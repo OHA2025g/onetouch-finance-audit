@@ -55,6 +55,12 @@ class TestEnterpriseHardeningContracts:
         assert r.status_code == 200, r.text
         assert r.json().get("status") == "live"
 
+    def test_phase40_health_ready_public(self):
+        _wait_api()
+        r = requests.get(f"{API}/system/health/ready", timeout=10)
+        assert r.status_code == 200, r.text
+        assert r.json().get("status") == "ready"
+
     def test_phase40_super_admin_protected_surfaces(self, super_admin_token):
         h = requests.get(f"{API}/system/health", headers=_h(super_admin_token), timeout=30)
         assert h.status_code == 200, h.text

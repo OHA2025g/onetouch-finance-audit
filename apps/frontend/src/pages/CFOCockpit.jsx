@@ -13,7 +13,7 @@ import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
 import { RC_STROKE, RC_TICK, rcTooltipStyle } from "../lib/rechartsTheme";
 import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import ReadinessHeatmap from "../components/ReadinessHeatmap";
 
@@ -43,21 +43,24 @@ export default function CFOCockpit() {
   const [refreshing, setRefreshing] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [processFilter, setProcessFilter] = useState("all");
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId, hrefWithMasterParams } = useMastersFilters();
+  const [heroReorderMode, setHeroReorderMode] = useState(false);
+  const [heroOrder, setHeroOrder] = useState(null); // string[] of KPI ids
+  const { entityCode, periodExplicit, departmentId, costCenterId, hrefWithMasterParams } = useMastersFilters();
   const nav = useNavigate();
   const firstLoadRef = useRef(true);
 
-  const dashboardParams = useMemo(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId],
-  );
+  const heroOrderStorageKey = useMemo(() => {
+    try {
+      const raw = localStorage.getItem("ota_user");
+      const u = raw ? JSON.parse(raw) : null;
+      const email = typeof u?.email === "string" ? u.email : "anon";
+      return `ota_cfo_hero_order_v1::${email}`;
+    } catch {
+      return "ota_cfo_hero_order_v1::anon";
+    }
+  }, []);
+
+  const dashboardParams = useDashboardFilterParams();
 
   const load = useCallback(async () => {
     if (firstLoadRef.current) setLoading(true);
@@ -151,6 +154,127 @@ export default function CFOCockpit() {
     return data.top_risks.filter((r) => processFilter === "all" || r.process === processFilter).slice(0, 10);
   }, [data, processFilter]);
 
+  const hero = useMemo(() => {
+    const k = data?.kpis || {};
+    if ((kpiSummary?.kpis || []).length) return kpiSummary.kpis;
+    // Default hero tiles (stable IDs) when KPI summary is unavailable.
+    return [
+      {
+        id: "audit_readiness_pct",
+        label: "Audit readiness",
+        unit: "pct",
+        value: k.audit_readiness_pct,
+        severity: k.audit_readiness_pct >= 80 ? "success" : k.audit_readiness_pct >= 60 ? "warning" : "critical",
+        drill_path: "/app/readiness",
+      },
+      {
+        id: "unresolved_high_risk_exposure",
+        label: "Unresolved exposure",
+        unit: "usd",
+        value: k.unresolved_high_risk_exposure,
+        severity: "critical",
+        drill_path: "/app/cases?status=open",
+      },
+      {
+        id: "high_critical_open_cases",
+        label: "High/critical cases",
+        unit: "count",
+        value: k.high_critical_open_cases,
+        severity: k.high_critical_open_cases > 5 ? "critical" : "warning",
+        drill_path: "/app/cases?status=open&severity=critical",
+      },
+      {
+        id: "repeat_finding_rate_pct",
+        label: "Repeat findings",
+        unit: "pct",
+        value: k.repeat_finding_rate_pct,
+        severity: k.repeat_finding_rate_pct > 30 ? "warning" : "success",
+        drill_path: "/app/audit",
+      },
+      {
+        id: "evidence_completeness_pct",
+        label: "Evidence completeness",
+        unit: "pct",
+        value: k.evidence_completeness_pct,
+        severity: null,
+        drill_path: "/app/evidence",
+      },
+      {
+        id: "remediation_sla_pct",
+        label: "Remediation SLA",
+        unit: "pct",
+        value: k.remediation_sla_pct,
+        severity: k.remediation_sla_pct >= 85 ? "success" : "warning",
+        drill_path: "/app/cases",
+      },
+    ];
+  }, [data, kpiSummary]);
+
+  const heroById = useMemo(() => {
+    const m = new Map();
+    for (const row of hero) {
+      const id = resolveCfoHeroKpiId(row) || row.id || row.label;
+      if (id) m.set(String(id), row);
+    }
+    return m;
+  }, [hero]);
+
+  // Initialize order from localStorage once data is available.
+  useEffect(() => {
+    if (!heroById.size) return;
+    if (heroOrder != null) return;
+    try {
+      const raw = localStorage.getItem(heroOrderStorageKey);
+      const parsed = raw ? JSON.parse(raw) : null;
+      const arr = Array.isArray(parsed) ? parsed.map(String) : [];
+      const valid = arr.filter((id) => heroById.has(id));
+      const missing = [...heroById.keys()].filter((id) => !valid.includes(id));
+      setHeroOrder([...valid, ...missing]);
+    } catch {
+      setHeroOrder([...heroById.keys()]);
+    }
+  }, [heroById, heroOrder, heroOrderStorageKey]);
+
+  const orderedHero = useMemo(() => {
+    if (!heroById.size) return hero;
+    const order = Array.isArray(heroOrder) && heroOrder.length ? heroOrder : [...heroById.keys()];
+    const out = [];
+    for (const id of order) {
+      const row = heroById.get(id);
+      if (row) out.push(row);
+    }
+    // Safety: preserve any unexpected extra rows
+    if (out.length < hero.length) {
+      const seen = new Set(out.map((r) => resolveCfoHeroKpiId(r) || r.id || r.label));
+      for (const r of hero) {
+        const id = resolveCfoHeroKpiId(r) || r.id || r.label;
+        if (!seen.has(id)) out.push(r);
+      }
+    }
+    return out;
+  }, [hero, heroById, heroOrder]);
+
+  const persistHeroOrder = useCallback((next) => {
+    setHeroOrder(next);
+    try {
+      localStorage.setItem(heroOrderStorageKey, JSON.stringify(next));
+    } catch {
+      // ignore
+    }
+  }, [heroOrderStorageKey]);
+
+  const moveHero = useCallback((id, dir) => {
+    const order = Array.isArray(heroOrder) && heroOrder.length ? [...heroOrder] : [...heroById.keys()];
+    const idx = order.indexOf(id);
+    if (idx < 0) return;
+    const nextIdx = dir === "up" ? idx - 1 : idx + 1;
+    if (nextIdx < 0 || nextIdx >= order.length) return;
+    const tmp = order[idx];
+    order[idx] = order[nextIdx];
+    order[nextIdx] = tmp;
+    persistHeroOrder(order);
+  }, [heroById, heroOrder, persistHeroOrder]);
+
   if (loading) {
     return (
       <div
@@ -184,56 +308,6 @@ export default function CFOCockpit() {
   }
 
   const k = data.kpis || {};
-  const hero = (kpiSummary?.kpis || []).length ? kpiSummary.kpis : [
-    {
-      id: "audit_readiness_pct",
-      label: "Audit readiness",
-      unit: "pct",
-      value: k.audit_readiness_pct,
-      severity: k.audit_readiness_pct >= 80 ? "success" : k.audit_readiness_pct >= 60 ? "warning" : "critical",
-      drill_path: "/app/readiness",
-    },
-    {
-      id: "unresolved_high_risk_exposure",
-      label: "Unresolved exposure",
-      unit: "usd",
-      value: k.unresolved_high_risk_exposure,
-      severity: "critical",
-      drill_path: "/app/cases?status=open",
-    },
-    {
-      id: "high_critical_open_cases",
-      label: "High/critical cases",
-      unit: "count",
-      value: k.high_critical_open_cases,
-      severity: k.high_critical_open_cases > 5 ? "critical" : "warning",
-      drill_path: "/app/cases?status=open&severity=critical",
-    },
-    {
-      id: "repeat_finding_rate_pct",
-      label: "Repeat findings",
-      unit: "pct",
-      value: k.repeat_finding_rate_pct,
-      severity: k.repeat_finding_rate_pct > 30 ? "warning" : "success",
-      drill_path: "/app/audit",
-    },
-    {
-      id: "evidence_completeness_pct",
-      label: "Evidence completeness",
-      unit: "pct",
-      value: k.evidence_completeness_pct,
-      severity: null,
-      drill_path: "/app/evidence",
-    },
-    {
-      id: "remediation_sla_pct",
-      label: "Remediation SLA",
-      unit: "pct",
-      value: k.remediation_sla_pct,
-      severity: k.remediation_sla_pct >= 85 ? "success" : "warning",
-      drill_path: "/app/cases",
-    },
-  ];
 
   return (
     <PageShell maxWidth="max-w-[1600px]" className="" >
@@ -378,8 +452,45 @@ export default function CFOCockpit() {
       )}
 
         {/* KPI hero band (Phase 3 / Slice 2 — driven by /kpi endpoints) */}
+        <div className="mb-2 flex items-center justify-between">
+          <div className="crt-overline text-muted-foreground">KPI tiles</div>
+          <div className="flex items-center gap-2">
+            {heroReorderMode ? (
+              <>
+                <button
+                  type="button"
+                  className="crt-num rounded-sm bg-primary px-3 py-2 text-[10px] uppercase tracking-wider text-white"
+                  onClick={() => setHeroReorderMode(false)}
+                  data-testid="hero-reorder-done"
+                >
+                  Done
+                </button>
+                <button
+                  type="button"
+                  className="crt-num rounded-sm border border-zinc-300 bg-white px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground hover:bg-zinc-50 hover:text-foreground dark:border-zinc-600 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                  onClick={() => {
+                    const fresh = [...heroById.keys()];
+                    persistHeroOrder(fresh);
+                  }}
+                  data-testid="hero-reorder-reset"
+                >
+                  Reset order
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="crt-num rounded-sm border border-zinc-300 bg-white px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground hover:bg-zinc-50 hover:text-foreground dark:border-zinc-600 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                onClick={() => setHeroReorderMode(true)}
+                data-testid="hero-reorder-open"
+              >
+                Reorder
+              </button>
+            )}
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-3 mb-8 md:grid-cols-3 lg:grid-cols-6">
-          {hero.map((row) => {
+          {orderedHero.map((row) => {
             const kpiSlug = resolveCfoHeroKpiId(row);
             const kpiHref = kpiSlug ? hrefWithMasterParams(`/app/kpi/${encodeURIComponent(kpiSlug)}`) : null;
             const fallbackHref = row.drill_path ? hrefWithMasterParams(row.drill_path) : null;
@@ -396,59 +507,49 @@ export default function CFOCockpit() {
             const card = (
               <StatCard label={row.label} value={value} unit={unit} severity={row.severity || undefined} />
             );
+            const tileId = String(kpiSlug || row.id || row.label || "");
+            const reorderControls = heroReorderMode ? (
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  className="crt-num flex-1 rounded-sm border border-zinc-300 bg-white py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground hover:bg-zinc-50 hover:text-foreground dark:border-zinc-600 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveHero(tileId, "up"); }}
+                  data-testid={`hero-move-up-${tileId}`}
+                >
+                  Up
+                </button>
+                <button
+                  type="button"
+                  className="crt-num flex-1 rounded-sm border border-zinc-300 bg-white py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground hover:bg-zinc-50 hover:text-foreground dark:border-zinc-600 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveHero(tileId, "down"); }}
+                  data-testid={`hero-move-down-${tileId}`}
+                >
+                  Down
+                </button>
+              </div>
+            ) : null;
             const linkCls = clsx(
               "block rounded-sm text-inherit no-underline outline-none ring-offset-background transition-colors",
               "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
               to && "cursor-pointer",
             );
             const testSuffix = kpiSlug || row.id || row.label || "tile";
-            return to ? (
-              <Link key={kpiSlug || row.id || row.drill_path || row.label} to={to} data-testid={`kpi-${testSuffix}`} className={linkCls}>
+            const content = (
+              <div className="rounded-sm">
                 {card}
+                {reorderControls}
+              </div>
+            );
+            return to && !heroReorderMode ? (
+              <Link key={kpiSlug || row.id || row.drill_path || row.label} to={to} data-testid={`kpi-${testSuffix}`} className={linkCls}>
+                {content}
               </Link>
             ) : (
-              <div key={row.id}>{card}</div>
+              <div key={kpiSlug || row.id || row.drill_path || row.label} className={heroReorderMode && to ? "cursor-move" : ""}>
+                {content}
+              </div>
             );
           })}
-        </div>
-
-        {/* Phase 4 — executive snapshot (deep links preserve reporting context) */}
-        <div className="mb-8" data-testid="cfo-executive-snapshot">
-          <SectionCard kicker="SNAPSHOT" title="Executive shortcuts" bodyClassName="p-4">
-            <p className="crt-num mb-3 text-[10px] uppercase tracking-wider text-muted-foreground">
-              Deep links keep entity, period, department, and cost center from the strip above.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Link
-                to={hrefWithMasterParams("/app/cfo-action-queue")}
-                className="crt-num inline-flex items-center rounded-sm border border-zinc-300 bg-white px-3 py-2 text-[10px] uppercase tracking-wider text-foreground transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-                data-testid="cfo-snapshot-action-queue"
-              >
-                Full action queue
-              </Link>
-              <Link
-                to={hrefWithMasterParams("/app/readiness")}
-                className="crt-num inline-flex items-center rounded-sm border border-zinc-300 bg-white px-3 py-2 text-[10px] uppercase tracking-wider text-foreground transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-                data-testid="cfo-snapshot-readiness"
-              >
-                Readiness matrix
-              </Link>
-              <Link
-                to={hrefWithMasterParams("/app/risk-intelligence")}
-                className="crt-num inline-flex items-center rounded-sm border border-zinc-300 bg-white px-3 py-2 text-[10px] uppercase tracking-wider text-foreground transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-                data-testid="cfo-snapshot-risk"
-              >
-                Risk signals
-              </Link>
-              <Link
-                to={hrefWithMasterParams("/app/cfo-command-center")}
-                className="crt-num inline-flex items-center rounded-sm border border-zinc-300 bg-white px-3 py-2 text-[10px] uppercase tracking-wider text-foreground transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-                data-testid="cfo-snapshot-hub"
-              >
-                Command center hub
-              </Link>
-            </div>
-          </SectionCard>
         </div>
 
         {/* Slice 3 — CFO action queue */}
@@ -457,6 +558,8 @@ export default function CFOCockpit() {
           title="CFO action queue"
           subtitle="Prioritized items across cases, exceptions, approvals, and integrations."
           className="mb-8"
+          collapsible
+          collapseTestId="cfo-cockpit-action-queue-collapse"
           right={
             <button
               type="button"

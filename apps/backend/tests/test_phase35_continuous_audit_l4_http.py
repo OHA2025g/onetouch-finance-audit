@@ -69,3 +69,9 @@ class TestContinuousAuditContracts:
         assert perf.status_code == 200, perf.text
         assert "items" in perf.json()
 
+        runs = requests.get(f"{API}/continuous-audit/runs", headers=_h(token), params={"limit": 10}, timeout=60)
+        assert runs.status_code == 200, runs.text
+        rb = runs.json()
+        assert "items" in rb and isinstance(rb["items"], list)
+        assert rb["items"], "expected at least one rule run after /rules/{id}/run"
+

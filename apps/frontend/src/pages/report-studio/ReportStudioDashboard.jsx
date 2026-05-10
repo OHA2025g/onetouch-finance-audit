@@ -2,10 +2,12 @@ import React, { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { http } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { SectionCard } from "../../components/PageShell";
 
 export default function ReportStudioDashboard() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const base = `/app/audit-planning/engagements/${encodeURIComponent(eid)}/report-studio`;
   const [busy, setBusy] = useState(false);
@@ -29,7 +31,7 @@ export default function ReportStudioDashboard() {
           type="button"
           disabled={busy}
           onClick={() =>
-            run(() => http.post(`/audit-engagements/${encodeURIComponent(eid)}/opinion/generate`), "Opinion generated")
+            run(() => http.post(`/audit-engagements/${encodeURIComponent(eid)}/opinion/generate`, {}, { params: dashboardParams }), "Opinion generated")
           }
           className="px-4 h-10 bg-white text-black font-mono text-xs uppercase disabled:opacity-50"
         >
@@ -38,7 +40,7 @@ export default function ReportStudioDashboard() {
         <button
           type="button"
           disabled={busy}
-          onClick={() => run(() => http.post(`/audit-engagements/${encodeURIComponent(eid)}/caro/generate`), "CARO annexure")}
+          onClick={() => run(() => http.post(`/audit-engagements/${encodeURIComponent(eid)}/caro/generate`, {}, { params: dashboardParams }), "CARO annexure")}
           className="px-4 h-10 border border-white text-white font-mono text-xs uppercase disabled:opacity-50"
         >
           Generate CARO
@@ -46,7 +48,7 @@ export default function ReportStudioDashboard() {
         <button
           type="button"
           disabled={busy}
-          onClick={() => run(() => http.post(`/audit-engagements/${encodeURIComponent(eid)}/report/generate`), "Report draft")}
+          onClick={() => run(() => http.post(`/audit-engagements/${encodeURIComponent(eid)}/report/generate`, {}, { params: dashboardParams }), "Report draft")}
           className="px-4 h-10 border border-[#262626] text-[#A3A3A3] font-mono text-xs uppercase hover:text-white disabled:opacity-50"
         >
           Generate final report

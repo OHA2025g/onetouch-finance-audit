@@ -1,9 +1,9 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { http } from "../lib/api";
-import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { pathForRelatedType } from "../lib/drillPaths";
+import { toProperHeadingLabel } from "../lib/headingCase";
 import {
   Sparkle,
   ArrowsClockwise,
@@ -35,18 +35,7 @@ export default function InsightPanel({ section, title = "AI Insights" }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId } = useMastersFilters();
-  const masterParams = useMemo(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId]
-  );
+  const masterParams = useDashboardFilterParams();
 
   const load = useCallback(
     async (refresh = false) => {
@@ -81,17 +70,24 @@ export default function InsightPanel({ section, title = "AI Insights" }) {
             <Sparkle size={14} weight="fill" className="text-[hsl(var(--chart-1))]" />
           </div>
           <div className="min-w-0">
-            <h3 className="font-display text-base font-semibold tracking-tight text-foreground">{title}</h3>
-            <div className="crt-num text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-              {data?.section_label || section} ·{" "}
+            <h3 className="font-display text-base font-semibold tracking-tight text-foreground">
+              {toProperHeadingLabel(title)}
+            </h3>
+            <div className="crt-num text-[10px] tracking-[0.08em] text-muted-foreground">
+              {toProperHeadingLabel(String(data?.section_label || section))} ·{" "}
               {isLLM ? (
-                <span className="text-[hsl(var(--primary))]">gemini · flash</span>
+                <span className="text-[hsl(var(--primary))]">{toProperHeadingLabel("gemini · flash")}</span>
               ) : data?.source === "heuristic" ? (
-                <span className="text-[hsl(var(--chart-3))]">heuristic · llm paused</span>
+                <span className="text-[hsl(var(--chart-3))]">{toProperHeadingLabel("heuristic · llm paused")}</span>
               ) : (
-                <span>loading…</span>
+                <span>Loading…</span>
               )}
-              {data?.cached && <span className="text-muted-foreground/80"> · cached {ageMin}m</span>}
+              {data?.cached && (
+                <span className="text-muted-foreground/80">
+                  {" "}
+                  · Cached {ageMin}m
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -101,10 +97,10 @@ export default function InsightPanel({ section, title = "AI Insights" }) {
             onClick={() => load(true)}
             disabled={loading}
             title="Regenerate insights"
-            className="crt-card flex h-8 items-center gap-1.5 px-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
+            className="crt-card flex h-8 items-center gap-1.5 px-3 font-mono text-[10px] tracking-wide text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
           >
             <ArrowsClockwise size={12} className={loading ? "animate-spin" : ""} />
-            <span>{loading ? "thinking…" : "refresh"}</span>
+            <span>{loading ? "Thinking…" : "Refresh"}</span>
           </button>
           <button
             onClick={() => setCollapsed((c) => !c)}
@@ -167,9 +163,9 @@ function Column({ icon, title, count, children }) {
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           {icon}
-          <h4 className="crt-overline text-muted-foreground">{title}</h4>
+          <h4 className="crt-overline text-muted-foreground">{toProperHeadingLabel(title)}</h4>
         </div>
-        <span className="crt-num text-[10px] uppercase tracking-wider text-muted-foreground">{count}</span>
+        <span className="crt-num text-[10px] tracking-wide text-muted-foreground">{count}</span>
       </div>
       <div className="space-y-2">{children}</div>
     </div>

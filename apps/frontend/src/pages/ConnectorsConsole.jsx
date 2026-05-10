@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { Plug, Plus, Heartbeat, ArrowsClockwise, Bug } from "@phosphor-icons/react";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 const PROVIDERS = [
   { id: "sap", label: "SAP" },
@@ -11,6 +12,7 @@ const PROVIDERS = [
 ];
 
 export default function ConnectorsConsole() {
+  const dashboardParams = useDashboardFilterParams();
   const [connectors, setConnectors] = useState([]);
   const [selected, setSelected] = useState(null);
   const [runs, setRuns] = useState([]);
@@ -24,30 +26,44 @@ export default function ConnectorsConsole() {
   const [entityCode, setEntityCode] = useState("US-HQ");
   const [envKey, setEnvKey] = useState("");
 
-  const load = async () => {
+  useEffect(() => {
+    const ec = dashboardParams.entity_code;
+    if (ec) setEntityCode(ec);
+  }, [dashboardParams.entity_code]);
+
+  const load = useCallback(async () => {
     const [c, h, sv] = await Promise.all([
-      http.get("/connectors"),
-      http.get("/dq/health"),
-      http.get("/dq/schema-validations", { params: { limit: 200 } }),
+      http.get("/connectors", { params: dashboardParams }),
+      http.get("/dq/health", { params: dashboardParams }),
+      http.get("/dq/schema-validations", { params: { limit: 200, ...dashboardParams } }),
     ]);
-    setConnectors(c.data);
+    const rows = c.data || [];
+    setConnectors(rows);
     setDqHealth(h.data);
     setSchemaVals(sv.data);
-    if (!selected && c.data.length) setSelected(c.data[0]);
-  };
+    setSelected((sel) => {
+      if (sel && rows.some((x) => x.id === sel.id)) return sel;
+      return rows.length ? rows[0] : null;
+    });
+  }, [dashboardParams]);
 
-  const loadSelected = async (conn) => {
+  const loadSelected = useCallback(async (conn) => {
     if (!conn?.id) return;
     const [r, e] = await Promise.all([
-      http.get(`/connectors/${conn.id}/runs`),
-      http.get(`/connectors/${conn.id}/errors`),
+      http.get(`/connectors/${conn.id}/runs`, { params: dashboardParams }),
+      http.get(`/connectors/${conn.id}/errors`, { params: dashboardParams }),
     ]);
     setRuns(r.data);
     setErrors(e.data);
-  };
+  }, [dashboardParams]);
 
-  useEffect(() => { load(); }, []); // eslint-disable-line
-  useEffect(() => { if (selected) loadSelected(selected); }, [selected?.id]); // eslint-disable-line
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    if (selected) loadSelected(selected);
+  }, [selected, loadSelected]);
 
   const create = async () => {
     setCreating(true);

@@ -8,8 +8,11 @@ import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, Dat
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { controlLibraryItemsFromResponse } from "../lib/controlLibraryResponse";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 export default function ControlLibraryPage() {
+  const dashboardParams = useDashboardFilterParams();
   const [rows, setRows] = useState([]);
   const [form, setForm] = useState({
     code: "",
@@ -21,12 +24,12 @@ export default function ControlLibraryPage() {
 
   const load = useCallback(async () => {
     try {
-      const { data } = await http.get("/control-library");
-      setRows(Array.isArray(data) ? data : []);
+      const { data } = await http.get("/control-library", { params: dashboardParams });
+      setRows(controlLibraryItemsFromResponse(data));
     } catch {
       toast.error("Failed to load library");
     }
-  }, []);
+  }, [dashboardParams]);
 
   useEffect(() => {
     load();
@@ -39,7 +42,7 @@ export default function ControlLibraryPage() {
       return;
     }
     try {
-      await http.post("/control-library", { ...form, objectives: [], activities: [], owners: [] });
+      await http.post("/control-library", { ...form, objectives: [], activities: [], owners: [] }, { params: dashboardParams });
       toast.success("Control added");
       setForm({ code: "", name: "", control_type: "preventive", process: "", description: "" });
       await load();

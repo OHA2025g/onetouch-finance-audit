@@ -1,8 +1,12 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { PaperPlaneRight, Sparkle, Warning, CheckCircle } from "@phosphor-icons/react";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
+import MastersFilterStrip from "../components/filters/MastersFilterStrip";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
+import { Link } from "react-router-dom";
+import { errorMessageFromAxios } from "../lib/apiErrorMessage";
 
 const SUGGESTED = [
   "Why did audit readiness decline this week?",
@@ -21,12 +25,19 @@ export default function Copilot() {
   const [asking, setAsking] = useState(false);
   const [sessionId, setSessionId] = useState(null);
   const boxRef = useRef(null);
+  const dashboardParams = useDashboardFilterParams();
 
-  const loadSessions = async () => {
-    const { data } = await http.get("/copilot/sessions");
-    setSessions(data);
-  };
-  useEffect(() => { loadSessions(); }, []);
+  const loadSessions = useCallback(async () => {
+    try {
+      const { data } = await http.get("/copilot/sessions", { params: dashboardParams });
+      setSessions(data);
+    } catch (e) {
+      toast.error(errorMessageFromAxios(e, "Failed to load copilot sessions"));
+    }
+  }, [dashboardParams]);
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
 
   useEffect(() => {
     if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
@@ -41,13 +52,17 @@ export default function Copilot() {
     const tempId = `tmp-${Date.now()}`;
     setSessions(s => [{ id: tempId, question: question_text, answer: "", citations: [], confidence: 0, needs_human_review: false, model: "gemini/...", created_at: new Date().toISOString(), pending: true }, ...s]);
     try {
-      const { data } = await http.post("/copilot/ask", { question: question_text, session_id: sessionId });
+      const { data } = await http.post("/copilot/ask", {
+        question: question_text,
+        session_id: sessionId,
+        ...dashboardParams,
+      });
       setSessionId(data.session_id);
       setSessions(s => s.filter(x => x.id !== tempId));
       await loadSessions();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Copilot failed");
-      setSessions(s => s.filter(x => x.id !== tempId));
+      toast.error(errorMessageFromAxios(e, "Copilot failed"));
+      setSessions((s) => s.filter((x) => x.id !== tempId));
     }
     setAsking(false);
   };
@@ -67,6 +82,9 @@ export default function Copilot() {
               </>
             }
           />
+          <div className="pb-4">
+            <MastersFilterStrip />
+          </div>
         </PageShell>
       </div>
 
@@ -176,7 +194,13 @@ function Message({ s }) {
                         <span className="crt-num w-6 shrink-0 text-primary">[#{i + 1}]</span>
                         <div className="min-w-0">
                           <div className="crt-num text-[10px] uppercase tracking-wider text-muted-foreground">{c.source_type}</div>
-                          <div className="truncate text-foreground">{c.label}</div>
+                          {c.app_path ? (
+                            <Link to={c.app_path} className="truncate text-foreground hover:underline">
+                              {c.label}
+                            </Link>
+                          ) : (
+                            <div className="truncate text-foreground">{c.label}</div>
+                          )}
                         </div>
                       </div>
                     ))}

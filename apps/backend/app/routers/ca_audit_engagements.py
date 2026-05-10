@@ -5,11 +5,14 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from starlette.requests import Request
 
 from app.auth import get_current_user
+from app.core.entity_scope import entity_scope_enforced
 from app.deps import audit_log, db, iso
 from app.schemas import ca_audit as sch
+from app.services.rbac_service import assert_engagement_entity_scope, enforce_entity_scope
 
 router = APIRouter(tags=["ca-audit"])
 
@@ -17,10 +20,23 @@ _ACTIVE_STATUSES = frozenset({"draft", "planned", "in-progress", "in_progress"})
 _TERMINAL_STATUSES = frozenset({"completed", "archived"})
 
 
-async def _engagement_or_404(engagement_id: str) -> Dict[str, Any]:
+async def _engagement_or_404(
+    engagement_id: str,
+    *,
+    current: dict,
+    request: Optional[Request] = None,
+) -> Dict[str, Any]:
+    """Load engagement and apply the same entity query + engagement RBAC as ``ca_audit_modules``."""
+    entity_code: Optional[str] = None
+    if request is not None:
+        qv = request.query_params.get("entity_code")
+        entity_code = str(qv).strip() if qv else None
+        entity_code = entity_code or None
+    await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     doc = await db.audit_engagements.find_one({"engagement_id": engagement_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Engagement not found")
+    await assert_engagement_entity_scope(db, current=current, engagement=doc)
     return doc
 
 
@@ -55,6 +71,10 @@ async def create_engagement(body: sch.AuditEngagementCreate, current=Depends(get
     exists = await db.audit_engagements.find_one({"engagement_id": body.engagement_id}, {"_id": 0, "id": 1})
     if exists:
         raise HTTPException(409, "engagement_id already exists")
+    req_code = (body.entity_code or "").strip() or None
+    req_name = (body.entity_name or "").strip() or None
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=req_code or req_name or None)
+    entity_code_stored = eff if eff else (req_code or None)
     doc_id = str(uuid.uuid4())
     milestones: List[Dict[str, Any]] = []
     team_members: List[Dict[str, Any]] = []
@@ -80,6 +100,7 @@ async def create_engagement(body: sch.AuditEngagementCreate, current=Depends(get
     doc: Dict[str, Any] = {
         "id": doc_id,
         "engagement_id": body.engagement_id,
+        "entity_code": entity_code_stored,
         "entity_name": body.entity_name,
         "financial_year": body.financial_year,
         "audit_type": body.audit_type,
@@ -113,8 +134,10 @@ async def list_engagements(
     status: Optional[str] = None,
     audit_type: Optional[str] = None,
     limit: int = 200,
+    entity_code: Optional[str] = Query(None, description="Optional legal entity hint; enforced when RBAC entity scope is on."),
     current=Depends(get_current_user),
 ):
+    await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if status:
         if status in ("in-progress", "in_progress"):
@@ -123,16 +146,31 @@ async def list_engagements(
             q["status"] = status
     if audit_type:
         q["audit_type"] = audit_type
+    if await entity_scope_enforced(db) and current.get("role") != "Super Admin":
+        user = await db.users.find_one({"id": current.get("user_id")}, {"_id": 0, "entity": 1})
+        ue = (user or {}).get("entity")
+        if ue:
+            q["entity_code"] = ue
     rows = [d async for d in db.audit_engagements.find(q, {"_id": 0}).sort("updated_at", -1).limit(limit)]
     return [_normalize_engagement_doc(d) for d in rows]
 
 
 @router.get("/audit-engagements/planning-metrics", response_model=sch.AuditEngagementPlanningMetrics)
-async def planning_metrics(current=Depends(get_current_user)):
+async def planning_metrics(
+    entity_code: Optional[str] = Query(None, description="Optional legal entity hint; enforced when RBAC entity scope is on."),
+    current=Depends(get_current_user),
+):
     """Aggregates for Audit Planning dashboard (must stay above `/{engagement_id}` routes)."""
+    await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     now = datetime.now(timezone.utc)
     horizon = now + timedelta(days=14)
-    engagements = [d async for d in db.audit_engagements.find({}, {"_id": 0})]
+    eng_q: Dict[str, Any] = {}
+    if await entity_scope_enforced(db) and current.get("role") != "Super Admin":
+        user = await db.users.find_one({"id": current.get("user_id")}, {"_id": 0, "entity": 1})
+        ue = (user or {}).get("entity")
+        if ue:
+            eng_q["entity_code"] = ue
+    engagements = [d async for d in db.audit_engagements.find(eng_q, {"_id": 0})]
     active = 0
     high_risk: List[sch.PlanningMetricsEngagementBrief] = []
     overdue: List[sch.PlanningMetricsEngagementBrief] = []
@@ -196,20 +234,23 @@ async def planning_metrics(current=Depends(get_current_user)):
 
 
 @router.get("/audit-engagements/{engagement_id}")
-async def get_engagement(engagement_id: str, current=Depends(get_current_user)):
-    return _normalize_engagement_doc(await _engagement_or_404(engagement_id))
+async def get_engagement(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    return _normalize_engagement_doc(await _engagement_or_404(engagement_id, current=current, request=request))
 
 
 @router.put("/audit-engagements/{engagement_id}")
-async def update_engagement(engagement_id: str, body: sch.AuditEngagementUpdate, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def update_engagement(request: Request, engagement_id: str, body: sch.AuditEngagementUpdate, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     data = body.model_dump(exclude_none=True)
     patch: Dict[str, Any] = {"updated_at": _now()}
-    reserved = {"scopes", "objectives", "timeline"}
+    reserved = {"scopes", "objectives", "timeline", "entity_code"}
     for k, v in data.items():
         if k in reserved:
             continue
         patch[k] = v
+    if "entity_code" in data and data.get("entity_code") is not None:
+        ec_in = (str(data["entity_code"])).strip() or None
+        patch["entity_code"] = await enforce_entity_scope(db, current=current, requested_entity_code=ec_in)
     if "timeline" in data:
         tl = data["timeline"]
         patch["timeline"] = tl if isinstance(tl, dict) else (tl.model_dump() if hasattr(tl, "model_dump") else tl)
@@ -241,8 +282,8 @@ async def update_engagement(engagement_id: str, body: sch.AuditEngagementUpdate,
 
 
 @router.delete("/audit-engagements/{engagement_id}")
-async def delete_engagement(engagement_id: str, current=Depends(get_current_user)):
-    eng = await _engagement_or_404(engagement_id)
+async def delete_engagement(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    eng = await _engagement_or_404(engagement_id, current=current, request=request)
     eid = engagement_id
     await db.audit_engagements.delete_one({"engagement_id": eid})
     for coll in (
@@ -290,8 +331,8 @@ async def delete_engagement(engagement_id: str, current=Depends(get_current_user
 
 
 @router.post("/audit-engagements/{engagement_id}/milestones")
-async def add_milestone(engagement_id: str, body: sch.AuditMilestoneIn, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def add_milestone(request: Request, engagement_id: str, body: sch.AuditMilestoneIn, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     ms = {
         "id": str(uuid.uuid4()),
         "title": body.title,
@@ -305,8 +346,8 @@ async def add_milestone(engagement_id: str, body: sch.AuditMilestoneIn, current=
 
 
 @router.post("/audit-engagements/{engagement_id}/team")
-async def add_team_member(engagement_id: str, body: sch.AuditTeamMemberIn, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def add_team_member(request: Request, engagement_id: str, body: sch.AuditTeamMemberIn, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     row = {
         "id": str(uuid.uuid4()),
         "user_email": body.user_email,
@@ -322,8 +363,8 @@ async def add_team_member(engagement_id: str, body: sch.AuditTeamMemberIn, curre
 
 
 @router.post("/audit-engagements/{engagement_id}/planning-notes")
-async def add_planning_note(engagement_id: str, body: sch.AuditPlanningNoteIn, current=Depends(get_current_user)):
-    await _engagement_or_404(engagement_id)
+async def add_planning_note(request: Request, engagement_id: str, body: sch.AuditPlanningNoteIn, current=Depends(get_current_user)):
+    await _engagement_or_404(engagement_id, current=current, request=request)
     note = {
         "id": str(uuid.uuid4()),
         "note": body.note,
@@ -339,8 +380,8 @@ async def add_planning_note(engagement_id: str, body: sch.AuditPlanningNoteIn, c
 
 
 @router.get("/audit-engagements/{engagement_id}/summary")
-async def engagement_summary(engagement_id: str, current=Depends(get_current_user)):
-    eng = _normalize_engagement_doc(await _engagement_or_404(engagement_id))
+async def engagement_summary(request: Request, engagement_id: str, current=Depends(get_current_user)):
+    eng = _normalize_engagement_doc(await _engagement_or_404(engagement_id, current=current, request=request))
     mat = await db.ca_materiality.find_one({"engagement_id": engagement_id}, {"_id": 0})
     risks = [r async for r in db.ca_risks.find({"engagement_id": engagement_id}, {"_id": 0})]
     cases = await db.cases.count_documents({"engagement_id": engagement_id})

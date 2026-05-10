@@ -2,13 +2,15 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.auth import get_current_user
+from app.core.entity_scope import entity_scope_enforced
 from app.core.security import require_roles
 from app.deps import db
 from app.services import retention_service as rs
+from app.services.rbac_service import enforce_entity_scope
 
 router = APIRouter(prefix="/retention", tags=["retention"])
 
@@ -20,8 +22,10 @@ class RetentionRunBody(BaseModel):
 
 @router.get("/policies")
 async def retention_policies_list(
-    _current=Depends(get_current_user),
+    entity_code: Optional[str] = Query(None, description="Legal entity key; enforced when RBAC entity scope is on."),
+    current=Depends(get_current_user),
 ):
+    await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await rs.list_policies(db)
 
 
@@ -52,15 +56,22 @@ async def retention_policies_update(
 
 @router.get("/eligible")
 async def retention_eligible(
-    _current=Depends(get_current_user),
+    entity_code: Optional[str] = Query(None, description="Legal entity key; enforced when RBAC entity scope is on."),
+    current=Depends(get_current_user),
 ):
+    await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await rs.find_eligible(db)
 
 
 @router.post("/run")
 async def retention_run(
-    body: RetentionRunBody, current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head")),
+    body: RetentionRunBody,
+    current=Depends(
+        require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin"),
+    ),
 ):
+    if await entity_scope_enforced(db) and current.get("role") != "Super Admin":
+        raise HTTPException(403, "Entity scope violation")
     return await rs.run_retention(
         db, dry_run=body.dry_run, artifact_types=body.artifact_types, user_email=current["email"],
     )

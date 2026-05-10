@@ -9,6 +9,7 @@ from app.auth import get_current_user
 from app.deps import db, audit_log, iso
 from app.models import CaseOut, CaseUpdate, CommentCreate, CommentOut
 from app.services.case_service import case_from_exception, merge_cases_master_filters
+from app.services.rbac_service import enforce_entity_scope
 
 router = APIRouter(tags=["cases"])
 
@@ -19,6 +20,8 @@ async def case_from_exception_endpoint(exception_id: str = Query(...), owner_ema
     ex = await db.exceptions.find_one({"id": exception_id}, {"_id": 0})
     if not ex:
         raise HTTPException(404, "Exception not found")
+    if ex.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=ex.get("entity"))
     existing = await db.cases.find_one({"exception_id": exception_id}, {"_id": 0})
     if existing:
         return existing
@@ -49,6 +52,7 @@ async def cases_list(
     limit: int = 200,
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if status:
         q["status"] = status
@@ -87,6 +91,8 @@ async def case_detail(case_id: str, current=Depends(get_current_user)):
     case = await db.cases.find_one({"id": case_id}, {"_id": 0})
     if not case:
         raise HTTPException(404, "Case not found")
+    if case.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=case.get("entity"))
     from app.services import legal_hold_service as ghs
     comments = [c async for c in db.case_comments.find({"case_id": case_id}, {"_id": 0}).sort("created_at", 1)]
     history = [h async for h in db.case_status_history.find({"case_id": case_id}, {"_id": 0}).sort("changed_at", 1)]
@@ -108,6 +114,8 @@ async def case_update(
     case = await db.cases.find_one({"id": case_id}, {"_id": 0})
     if not case:
         raise HTTPException(404, "Case not found")
+    if case.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=case.get("entity"))
     await wsv.require_case_mutable(db, case, current, force_override=force_override)
     update = {k: v for k, v in body.model_dump().items() if v is not None}
     if "status" in update and update["status"] != case.get("status"):
@@ -140,6 +148,8 @@ async def case_comment(
     case0 = await db.cases.find_one({"id": case_id}, {"_id": 0})
     if not case0:
         raise HTTPException(404, "Case not found")
+    if case0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=case0.get("entity"))
     await wsv.require_case_mutable(db, case0, current, force_override=force_override)
     user = await db.users.find_one({"id": current["user_id"]}, {"_id": 0})
     doc = {

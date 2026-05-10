@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 const TABS = [
   { id: "summary", label: "Executive summary" },
@@ -15,6 +16,7 @@ const TABS = [
 const DEMO_EID = "ENG-DEMO-IN-2025";
 
 export default function ExecutiveReviewPage() {
+  const dashboardParams = useDashboardFilterParams();
   const [params, setParams] = useSearchParams();
   const eid = params.get("engagement_id") || DEMO_EID;
   const tab = params.get("tab") || "summary";
@@ -34,7 +36,7 @@ export default function ExecutiveReviewPage() {
       setLoadingList(true);
       setErr(null);
       try {
-        const { data } = await http.get("/audit-engagements");
+        const { data } = await http.get("/audit-engagements", { params: dashboardParams });
         if (!c) setEngagements(Array.isArray(data) ? data : []);
       } catch {
         if (!c) setErr("Could not load engagements");
@@ -43,7 +45,7 @@ export default function ExecutiveReviewPage() {
       }
     })();
     return () => { c = true; };
-  }, []);
+  }, [dashboardParams]);
 
   const loadTab = useCallback(async () => {
     if (!eid) return;
@@ -51,16 +53,24 @@ export default function ExecutiveReviewPage() {
     setErr(null);
     try {
       if (tab === "summary") {
-        const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/executive-summary`);
+        const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/executive-summary`, {
+          params: dashboardParams,
+        });
         setSummary(data);
       } else if (tab === "assurance") {
-        const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/continuous-assurance-score`);
+        const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/continuous-assurance-score`, {
+          params: dashboardParams,
+        });
         setAssurance(data);
       } else if (tab === "pack") {
-        const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/audit-committee-pack`);
+        const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/audit-committee-pack`, {
+          params: dashboardParams,
+        });
         setPack(data);
       } else if (tab === "advisory" || tab === "letter") {
-        const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/advisory-insights`);
+        const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/advisory-insights`, {
+          params: dashboardParams,
+        });
         setAdvisory(data);
         if (tab === "letter") setLetterText(null);
       }
@@ -70,7 +80,7 @@ export default function ExecutiveReviewPage() {
     } finally {
       setTabLoading(false);
     }
-  }, [eid, tab]);
+  }, [eid, tab, dashboardParams]);
 
   useEffect(() => {
     loadTab();
@@ -92,7 +102,7 @@ export default function ExecutiveReviewPage() {
 
   const genLetter = async () => {
     try {
-      const { data } = await http.post(`/audit-engagements/${encodeURIComponent(eid)}/management-letter/generate`);
+      const { data } = await http.post(`/audit-engagements/${encodeURIComponent(eid)}/management-letter/generate`, {}, { params: dashboardParams });
       setLetterText(data?.text || "");
       toast.success("Management letter generated");
     } catch {

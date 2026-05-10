@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { http } from "../lib/api";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import { StatCard } from "../components/StatCard";
 import { SeverityBadge } from "../components/Badges";
@@ -17,21 +17,15 @@ import clsx from "clsx";
 export default function ControllerDashboard() {
   const [d, setD] = useState(null);
   const nav = useNavigate();
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId } = useMastersFilters();
+  const dashboardParams = useDashboardFilterParams();
+  const { entityCode, periodExplicit, departmentId, costCenterId } = useMastersFilters();
 
   useEffect(() => {
-    const params = buildDashboardFilterParams({
-      entityCode,
-      periodYm,
-      periodExplicit,
-      departmentId,
-      costCenterId,
-    });
     http
-      .get("/dashboard/controller", { params })
+      .get("/dashboard/controller", { params: dashboardParams })
       .then((r) => setD(r.data))
       .catch(() => toast.error("Load failed"));
-  }, [entityCode, periodYm, periodExplicit, departmentId, costCenterId]);
+  }, [dashboardParams]);
 
   if (!d) {
     return (

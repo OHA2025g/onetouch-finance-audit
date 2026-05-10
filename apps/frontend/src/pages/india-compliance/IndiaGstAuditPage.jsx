@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { http } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { SectionCard } from "../../components/PageShell";
 
 const empty = {
@@ -17,14 +18,15 @@ const empty = {
 
 export default function IndiaGstAuditPage() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const [form, setForm] = useState(empty);
   const [history, setHistory] = useState([]);
 
   const load = useCallback(async () => {
-    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/gst/reconciliation`);
+    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/gst/reconciliation`, { params: dashboardParams });
     setHistory(data.items || []);
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     load().catch(() => {});
@@ -34,16 +36,20 @@ export default function IndiaGstAuditPage() {
     e.preventDefault();
     const n = (v) => (v === "" ? 0 : parseFloat(v));
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/gst/reconciliation`, {
-        gstr1_sales: n(form.gstr1_sales),
-        gstr3b_sales: n(form.gstr3b_sales),
-        gstr2b_purchases: n(form.gstr2b_purchases),
-        purchase_register: n(form.purchase_register),
-        itc_claimed: n(form.itc_claimed),
-        itc_eligible: n(form.itc_eligible),
-        gstr3b_output_tax_liability: form.gstr3b_output_tax_liability === "" ? null : n(form.gstr3b_output_tax_liability),
-        books_output_tax_liability: form.books_output_tax_liability === "" ? null : n(form.books_output_tax_liability),
-      });
+      await http.post(
+        `/audit-engagements/${encodeURIComponent(eid)}/gst/reconciliation`,
+        {
+          gstr1_sales: n(form.gstr1_sales),
+          gstr3b_sales: n(form.gstr3b_sales),
+          gstr2b_purchases: n(form.gstr2b_purchases),
+          purchase_register: n(form.purchase_register),
+          itc_claimed: n(form.itc_claimed),
+          itc_eligible: n(form.itc_eligible),
+          gstr3b_output_tax_liability: form.gstr3b_output_tax_liability === "" ? null : n(form.gstr3b_output_tax_liability),
+          books_output_tax_liability: form.books_output_tax_liability === "" ? null : n(form.books_output_tax_liability),
+        },
+        { params: dashboardParams },
+      );
       setForm(empty);
       await load();
       toast.success("GST reconciliation saved");

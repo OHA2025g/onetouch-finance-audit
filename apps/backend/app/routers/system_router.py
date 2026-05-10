@@ -1,9 +1,12 @@
 """Phase 40 — enterprise hardening endpoints.
 
 These endpoints provide a stable, versionable surface for:
-- system health checks
+- system health checks (live vs readiness-style probes)
 - audit log access
 - security configuration (field masking / policy toggles)
+
+Operational note: mutating routes should call ``audit_log`` from ``app.deps`` so Super Admin review under
+``GET /system/audit-logs`` stays complete for security sign-off.
 """
 
 from __future__ import annotations
@@ -27,6 +30,16 @@ async def health_live():
     except Exception as e:
         raise HTTPException(503, f"Mongo ping failed: {type(e).__name__}")
     return {"status": "live", "service": "One Touch Audit AI"}
+
+
+@router.get("/health/ready")
+async def health_ready():
+    """Readiness probe: MongoDB must accept queries (same ping as live; dedicated route for orchestrators)."""
+    try:
+        await db.command("ping")
+    except Exception as e:
+        raise HTTPException(503, f"Mongo ping failed: {type(e).__name__}")
+    return {"status": "ready", "service": "One Touch Audit AI"}
 
 
 @router.get("/health")

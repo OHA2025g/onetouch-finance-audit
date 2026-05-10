@@ -130,6 +130,32 @@ class TestMonthEndCloseContracts:
         assert rq.status_code == 200, rq.text
         assert "score" in rq.json()
 
+        # Optional cycle_id: defaults to latest cycle by period (health checks / API sweeps)
+        rcy = requests.get(f"{API}/close/cycles", headers=_h(tokens["controller"]), timeout=30)
+        assert rcy.status_code == 200, rcy.text
+        cycles = rcy.json()
+        assert isinstance(cycles, list) and cycles, "expected at least one close cycle in DB"
+        latest_id = cycles[0]["id"]
+        rb2 = requests.get(f"{API}/close/bottlenecks", headers=_h(tokens["controller"]), timeout=30)
+        assert rb2.status_code == 200, rb2.text
+        j2 = rb2.json()
+        assert "pending" in j2
+        assert j2.get("cycle_id") == latest_id
+        rq2 = requests.get(f"{API}/close/quality-score", headers=_h(tokens["controller"]), timeout=30)
+        assert rq2.status_code == 200, rq2.text
+        j3 = rq2.json()
+        assert "score" in j3
+        assert j3.get("cycle_id") == latest_id
+
+        # Override without adequate reason must fail
+        r_short = requests.post(
+            f"{API}/close/signoff",
+            headers=_h(tokens["cfo"]),
+            json={"cycle_id": cycle_id, "override": True, "override_reason": "too short"},
+            timeout=30,
+        )
+        assert r_short.status_code == 400, r_short.text
+
         # Override signoff must succeed (if not already signed off)
         r1 = requests.post(
             f"{API}/close/signoff",

@@ -1,5 +1,7 @@
 import React from "react";
+import { MemoryRouter } from "react-router-dom";
 import { render, screen } from "@testing-library/react";
+import { MastersFilterProvider } from "../../lib/MastersFilterContext";
 
 jest.mock("../../lib/api", () => ({
   __esModule: true,
@@ -19,7 +21,13 @@ describe("Admin master pages", () => {
   });
 
   test("AdminMasterDataQualityPage renders", async () => {
-    render(<AdminMasterDataQualityPage />);
+    render(
+      <MemoryRouter>
+        <MastersFilterProvider>
+          <AdminMasterDataQualityPage />
+        </MastersFilterProvider>
+      </MemoryRouter>,
+    );
     expect(await screen.findByText(/Master data quality/i)).toBeInTheDocument();
   });
 });

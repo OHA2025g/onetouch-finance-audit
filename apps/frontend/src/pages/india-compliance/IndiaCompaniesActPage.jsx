@@ -2,18 +2,20 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { http } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { SectionCard } from "../../components/PageShell";
 import ComplianceReqTable from "./ComplianceReqTable";
 
 export default function IndiaCompaniesActPage() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const [requirements, setRequirements] = useState([]);
 
   const load = useCallback(async () => {
-    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/compliance/status`);
+    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/compliance/status`, { params: dashboardParams });
     setRequirements(data.requirements || []);
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     load().catch(() => toast.error("Load failed"));
@@ -21,7 +23,7 @@ export default function IndiaCompaniesActPage() {
 
   const seedCa = async () => {
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/compliance/checklist`, { law_codes: ["CA2013"] });
+      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/compliance/checklist`, { law_codes: ["CA2013"] }, { params: dashboardParams });
       await load();
       toast.success("Companies Act checklist loaded");
     } catch {

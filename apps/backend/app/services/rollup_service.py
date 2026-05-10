@@ -162,6 +162,42 @@ async def rollup_summary(db) -> Dict[str, Any]:
     }
 
 
+async def rollup_summary_scoped_to_user_entity(db, user_entity: str) -> Dict[str, Any]:
+    """Org rollup restricted to one legal entity (Phase 40 RBAC — entity_scope_enforced)."""
+    now = iso_utc(datetime.now(timezone.utc))
+    tree = await get_hierarchy_tree(db)
+    node: Optional[Dict[str, Any]] = None
+    for n in tree:
+        if n.get("type") == "legal_entity" and n.get("entity_code") == user_entity:
+            node = dict(n)
+            break
+    if not node:
+        node = {
+            "id": f"scoped-{user_entity}",
+            "type": "legal_entity",
+            "entity_code": user_entity,
+            "name": user_entity,
+        }
+    eids: Set[str] = {user_entity}
+    metrics = await compute_rollup_metrics(db, eids, None)
+    root = await db.organization_hierarchy.find_one({"type": "organization"}, {"_id": 0})
+    children_raw = await list_children_for_parent(db, root["id"]) if root else []
+    filtered: List[Dict[str, Any]] = []
+    for row in children_raw:
+        ec = set(row.get("entity_codes") or [])
+        if ec and ec.issubset({user_entity}):
+            filtered.append(row)
+    return {
+        "as_of": now,
+        "reporting_ccy": "USD",
+        "node": node,
+        "entity_codes": sorted(eids),
+        "metrics": metrics,
+        "children": filtered,
+        "entity_scope_applied": True,
+    }
+
+
 async def rollup_hierarchy_with_metrics(db) -> Dict[str, Any]:
     return await rollup_summary(db)
 

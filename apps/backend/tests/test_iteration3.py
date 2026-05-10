@@ -74,6 +74,17 @@ class TestDrill:
         assert "primary" in d and "roles" in d and "access_events" in d
         assert "cases" in d and "journals_posted" in d and "audit_log" in d
 
+    def test_drill_user_resolves_user_access_event_id(self, tokens):
+        """UA-* ids from exception.source_record_id must resolve to the event's user_email (seeded)."""
+        r = requests.get(f"{BASE_URL}/api/drill/user/UA-0", headers=_h(tokens["cfo"]), timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d.get("type") == "user"
+        assert d["primary"].get("email") and "@" in d["primary"]["email"]
+        assert d["primary"]["email"] != "UA-0"
+        assert isinstance(d.get("access_events"), list)
+        assert len(d["access_events"]) >= 1
+
     def test_drill_control_C_AP_001(self, tokens):
         r = requests.get(f"{BASE_URL}/api/drill/control/C-AP-001", headers=_h(tokens["cfo"]), timeout=15)
         assert r.status_code == 200, r.text

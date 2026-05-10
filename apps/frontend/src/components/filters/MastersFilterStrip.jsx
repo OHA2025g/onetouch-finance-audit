@@ -30,10 +30,10 @@ export default function MastersFilterStrip({ className = "" }) {
       data-testid="masters-filter-strip"
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="crt-overline text-muted-foreground">Reporting context · URL-synced</div>
+        <div className="crt-overline text-muted-foreground">Reporting Context · URL-Synced</div>
         <button
           type="button"
-          className="crt-num rounded-sm border border-zinc-300 bg-white px-2 py-1 text-[9px] uppercase tracking-wider text-muted-foreground hover:text-foreground dark:border-zinc-600 dark:bg-zinc-900"
+          className="crt-num rounded-sm border border-zinc-300 bg-white px-2 py-1 text-[9px] tracking-wide text-muted-foreground hover:text-foreground dark:border-zinc-600 dark:bg-zinc-900"
           onClick={() => {
             clearAll();
             toast.message("Context cleared");

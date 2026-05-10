@@ -43,6 +43,7 @@ async def create_request(
     proposed_change: Dict[str, Any],
     requested_by: str,
     reason: str,
+    entity_code: Optional[str] = None,
 ) -> Dict[str, Any]:
     now = iso_utc(datetime.now(timezone.utc))
     rid = f"apr-{uuid.uuid4().hex[:10]}"
@@ -51,6 +52,7 @@ async def create_request(
         "request_type": request_type,
         "subject_type": subject_type,
         "subject_id": subject_id,
+        "entity_code": entity_code,
         "proposed_change": proposed_change,
         "reason": reason,
         "status": "pending",
@@ -62,10 +64,18 @@ async def create_request(
     return doc
 
 
-async def list_requests(db, status: Optional[str] = None, limit: int = 200) -> List[Dict[str, Any]]:
+async def list_requests(
+    db,
+    status: Optional[str] = None,
+    limit: int = 200,
+    *,
+    entity_code: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     q: Dict[str, Any] = {}
     if status:
         q["status"] = status
+    if entity_code:
+        q["entity_code"] = entity_code
     return [r async for r in db.approval_requests.find(q, {"_id": 0}).sort("requested_at", -1).limit(limit)]
 
 
@@ -76,10 +86,15 @@ async def decide(
     decision: str,
     decided_by: str,
     note: str = "",
+    current: Optional[dict] = None,
 ) -> Dict[str, Any]:
+    from app.services.rbac_service import assert_approval_request_entity_scope
+
     req = await db.approval_requests.find_one({"id": request_id}, {"_id": 0})
     if not req:
         raise HTTPException(404, "Approval request not found")
+    if current is not None:
+        await assert_approval_request_entity_scope(db, current=current, request=req)
     if req.get("status") != "pending":
         raise HTTPException(409, "Request already decided")
     now = iso_utc(datetime.now(timezone.utc))
@@ -103,15 +118,27 @@ async def decide(
     return await db.approval_requests.find_one({"id": request_id}, {"_id": 0})  # type: ignore[return-value]
 
 
-async def require_approval_or_raise(db, *, action: str, subject_type: str, subject_id: str) -> None:
+async def require_approval_or_raise(
+    db,
+    *,
+    action: str,
+    subject_type: str,
+    subject_id: str,
+    entity_code: Optional[str] = None,
+) -> None:
     pol = await get_policy(db)
     if not (pol.get("requires_approval") or {}).get(action, False):
         return
-    # If there is a recently approved request for this subject+action, allow
-    approved = await db.approval_requests.find_one(
-        {"request_type": action, "subject_type": subject_type, "subject_id": subject_id, "status": "approved"},
-        {"_id": 0},
-    )
+    # If there is an approved request for this subject+action, allow (optionally same legal entity).
+    q: Dict[str, Any] = {
+        "request_type": action,
+        "subject_type": subject_type,
+        "subject_id": subject_id,
+        "status": "approved",
+    }
+    if entity_code:
+        q["entity_code"] = str(entity_code).strip()
+    approved = await db.approval_requests.find_one(q, {"_id": 0})
     if approved:
         return
     raise HTTPException(403, f"Action requires approval: {action}. Create an approval request first.")

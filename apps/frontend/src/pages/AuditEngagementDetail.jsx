@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { ArrowLeft, ArrowSquareOut } from "@phosphor-icons/react";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import { useAuth } from "../lib/auth";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import MaterialitySetupPanel from "../components/ca/MaterialitySetupPanel";
 import RacmBuilderPanel from "../components/ca/RacmBuilderPanel";
 import FinancialStatementAuditPanel from "../components/ca/FinancialStatementAuditPanel";
@@ -36,6 +37,7 @@ export default function AuditEngagementDetail() {
   const nav = useNavigate();
   const { engagementId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const [tab, setTab] = useState("overview");
   const [eng, setEng] = useState(null);
@@ -55,13 +57,14 @@ export default function AuditEngagementDetail() {
 
   const loadCore = useCallback(async () => {
     if (!eid) return;
+    const qp = { params: dashboardParams };
     const [{ data: e }, { data: s }] = await Promise.all([
-      http.get(`/audit-engagements/${encodeURIComponent(eid)}`),
-      http.get(`/audit-engagements/${encodeURIComponent(eid)}/summary`),
+      http.get(`/audit-engagements/${encodeURIComponent(eid)}`, qp),
+      http.get(`/audit-engagements/${encodeURIComponent(eid)}/summary`, qp),
     ]);
     setEng(e);
     setSummary(s);
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,11 +87,11 @@ export default function AuditEngagementDetail() {
     const run = async () => {
       try {
         if (tab === "materiality") {
-          const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/materiality`);
+          const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/materiality`, { params: dashboardParams });
           setMateriality(data);
         }
         if (tab === "wp") {
-          const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/wp-workbench`);
+          const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/wp-workbench`, { params: dashboardParams });
           setWpStats({
             folders: (data.folders || []).length,
             papers: (data.working_papers || []).length,
@@ -97,15 +100,15 @@ export default function AuditEngagementDetail() {
           });
         }
         if (tab === "compliance") {
-          const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/compliance/status`);
+          const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/compliance/status`, { params: dashboardParams });
           setCompliance(data);
         }
         if (tab === "reporting") {
-          const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/observations`);
+          const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/observations`, { params: dashboardParams });
           setObservations(data || []);
         }
         if (tab === "command") {
-          const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/continuous-assurance-score`);
+          const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/continuous-assurance-score`, { params: dashboardParams });
           setScores(data);
         }
       } catch {
@@ -113,12 +116,12 @@ export default function AuditEngagementDetail() {
       }
     };
     run();
-  }, [eid, tab]);
+  }, [eid, tab, dashboardParams]);
 
   const ensureCompliance = async () => {
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/compliance/checklist`, { law_codes: [] });
-      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/compliance/status`);
+      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/compliance/checklist`, { law_codes: [] }, { params: dashboardParams });
+      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/compliance/status`, { params: dashboardParams });
       setCompliance(data);
       toast.success("Compliance checklist ready");
     } catch {
@@ -291,8 +294,8 @@ export default function AuditEngagementDetail() {
             className="px-3 h-9 border border-[#262626] text-xs font-mono uppercase text-[#A3A3A3] hover:text-white"
             onClick={async () => {
               try {
-                await http.post(`/audit-engagements/${encodeURIComponent(eid)}/working-papers/folders`);
-                const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/wp-workbench`);
+                await http.post(`/audit-engagements/${encodeURIComponent(eid)}/working-papers/folders`, {}, { params: dashboardParams });
+                const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/wp-workbench`, { params: dashboardParams });
                 setWpStats({
                   folders: (data.folders || []).length,
                   papers: (data.working_papers || []).length,
@@ -381,10 +384,10 @@ export default function AuditEngagementDetail() {
           bodyClassName="p-6 space-y-3"
         >
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="px-3 h-9 border border-[#262626] text-xs font-mono uppercase" onClick={async () => { await http.post(`/audit-engagements/${encodeURIComponent(eid)}/opinion/generate`); toast.success("Opinion generated"); }}>Generate opinion</button>
-            <button type="button" className="px-3 h-9 border border-[#262626] text-xs font-mono uppercase" onClick={async () => { await http.post(`/audit-engagements/${encodeURIComponent(eid)}/caro/generate`); toast.success("CARO draft"); }}>CARO annexure</button>
-            <button type="button" className="px-3 h-9 border border-[#262626] text-xs font-mono uppercase" onClick={async () => { await http.post(`/audit-engagements/${encodeURIComponent(eid)}/report/generate`); toast.success("Report draft"); }}>Final report</button>
-            <button type="button" className="px-3 h-9 border border-[#262626] text-xs font-mono uppercase" onClick={async () => { await http.post(`/audit-engagements/${encodeURIComponent(eid)}/management-letter/generate`); toast.success("Mgmt letter"); }}>Management letter</button>
+            <button type="button" className="px-3 h-9 border border-[#262626] text-xs font-mono uppercase" onClick={async () => { await http.post(`/audit-engagements/${encodeURIComponent(eid)}/opinion/generate`, {}, { params: dashboardParams }); toast.success("Opinion generated"); }}>Generate opinion</button>
+            <button type="button" className="px-3 h-9 border border-[#262626] text-xs font-mono uppercase" onClick={async () => { await http.post(`/audit-engagements/${encodeURIComponent(eid)}/caro/generate`, {}, { params: dashboardParams }); toast.success("CARO draft"); }}>CARO annexure</button>
+            <button type="button" className="px-3 h-9 border border-[#262626] text-xs font-mono uppercase" onClick={async () => { await http.post(`/audit-engagements/${encodeURIComponent(eid)}/report/generate`, {}, { params: dashboardParams }); toast.success("Report draft"); }}>Final report</button>
+            <button type="button" className="px-3 h-9 border border-[#262626] text-xs font-mono uppercase" onClick={async () => { await http.post(`/audit-engagements/${encodeURIComponent(eid)}/management-letter/generate`, {}, { params: dashboardParams }); toast.success("Mgmt letter"); }}>Management letter</button>
           </div>
           <ul className="text-sm text-[#E5E5E5] space-y-2">
             {observations.map((o) => (

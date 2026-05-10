@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { http } from "../../lib/api";
 import { PageHeader, PageShell, SectionCard } from "../../components/PageShell";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 
 const DEMO_EID = "ENG-DEMO-IN-2025";
 
@@ -16,6 +17,7 @@ export default function EngagementShortcutPage({
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const eid = params.get("engagement_id") || DEMO_EID;
+  const dashboardParams = useDashboardFilterParams();
 
   const [engagements, setEngagements] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +31,7 @@ export default function EngagementShortcutPage({
       setLoading(true);
       setErr(null);
       try {
-        const { data } = await http.get("/audit-engagements");
+        const { data } = await http.get("/audit-engagements", { params: dashboardParams });
         if (!cancelled) setEngagements(Array.isArray(data) ? data : []);
       } catch {
         if (!cancelled) setErr("Could not load engagements.");
@@ -40,7 +42,7 @@ export default function EngagementShortcutPage({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dashboardParams]);
 
   const setEngagement = (id) => {
     const n = new URLSearchParams(params);

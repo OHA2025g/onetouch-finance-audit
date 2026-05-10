@@ -11,6 +11,7 @@ from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.analytics import cash_conversion_dashboard, working_capital_dashboard, treasury_dashboard, fpa_dashboard
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 wc_router = APIRouter(prefix="/working-capital", tags=["working-capital"])
@@ -33,6 +34,17 @@ def _scope_kwargs(
         "department_id": department_id,
         "cost_center_id": cost_center_id,
     }
+
+
+async def _enforce_scope(
+    current: dict,
+    entity_code: Optional[str],
+    period_ym: Optional[str] = None,
+    department_id: Optional[str] = None,
+    cost_center_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    ec = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    return _scope_kwargs(ec, period_ym, department_id, cost_center_id)
 
 
 def _parse_dt(s: Any) -> Optional[datetime]:
@@ -190,7 +202,7 @@ async def wc_summary(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    kw = _scope_kwargs(entity_code, period_ym, department_id, cost_center_id)
+    kw = await _enforce_scope(current, entity_code, period_ym, department_id, cost_center_id)
     data = await working_capital_dashboard(db, **kw)
     return {"source": "analytics.working_capital_dashboard", "as_of": as_of_now(), "data": data}
 
@@ -203,7 +215,7 @@ async def wc_ccc(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    kw = _scope_kwargs(entity_code, period_ym, department_id, cost_center_id)
+    kw = await _enforce_scope(current, entity_code, period_ym, department_id, cost_center_id)
     ccc = await cash_conversion_dashboard(db, **kw)
     return {"source": "analytics.cash_conversion_dashboard", "as_of": as_of_now(), "data": ccc}
 
@@ -216,7 +228,7 @@ async def wc_blocked_cash(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    kw = _scope_kwargs(entity_code, period_ym, department_id, cost_center_id)
+    kw = await _enforce_scope(current, entity_code, period_ym, department_id, cost_center_id)
     wc = await working_capital_dashboard(db, **kw)
     k = wc.get("kpis") or {}
     ar_overdue = float(k.get("ar_overdue_amount") or 0.0)
@@ -243,7 +255,7 @@ async def wc_bridge(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    kw = _scope_kwargs(entity_code, period_ym, department_id, cost_center_id)
+    kw = await _enforce_scope(current, entity_code, period_ym, department_id, cost_center_id)
     wc = await working_capital_dashboard(db, **kw)
     k = wc.get("kpis") or {}
     return {
@@ -267,9 +279,12 @@ async def wc_entity_view(
     current=Depends(get_current_user),
 ):
     entities = [e async for e in db.entities.find({}, {"_id": 0, "code": 1, "name": 1}).sort("code", 1)]
+    scoped = await enforce_entity_scope(db, current=current, requested_entity_code=None)
+    if scoped and current.get("role") != "Super Admin":
+        entities = [e for e in entities if (e or {}).get("code") == scoped]
     rows = []
     for e in entities:
-        kw = _scope_kwargs(e.get("code"), period_ym, department_id, cost_center_id)
+        kw = await _enforce_scope(current, (e or {}).get("code"), period_ym, department_id, cost_center_id)
         wc = await working_capital_dashboard(db, **kw)
         k = wc.get("kpis") or {}
         rows.append(
@@ -295,7 +310,7 @@ async def wc_ar_ageing(
     current=Depends(get_current_user),
 ):
     """Phase 9 — AR ageing buckets derived from Phase 2 `ar_invoices`."""
-    kw = _scope_kwargs(entity_code, period_ym, department_id, cost_center_id)
+    kw = await _enforce_scope(current, entity_code, period_ym, department_id, cost_center_id)
     wc = await working_capital_dashboard(db, **kw)
     return {
         "as_of": as_of_now(),
@@ -316,7 +331,7 @@ async def wc_ap_ageing(
     current=Depends(get_current_user),
 ):
     """Phase 10 — AP ageing buckets derived from Phase 1 `invoices`."""
-    kw = _scope_kwargs(entity_code, period_ym, department_id, cost_center_id)
+    kw = await _enforce_scope(current, entity_code, period_ym, department_id, cost_center_id)
     wc = await working_capital_dashboard(db, **kw)
     return {
         "as_of": as_of_now(),
@@ -336,7 +351,7 @@ async def ar_summary(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    kw = _scope_kwargs(entity_code, period_ym, department_id, cost_center_id)
+    kw = await _enforce_scope(current, entity_code, period_ym, department_id, cost_center_id)
     full = await working_capital_dashboard(db, **kw)
     return {
         "source": "working_capital_dashboard.ar_slice",
@@ -355,6 +370,7 @@ async def ar_customers(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     filt: Dict[str, Any] = {}
     if entity_code:
         filt["entity"] = entity_code
@@ -377,6 +393,7 @@ async def ar_customer_detail(
         c = await db.customers.find_one({"customer_code": customer_id}, {"_id": 0})
     if not c:
         return {"id": customer_id, "found": False, "as_of": as_of_now()}
+    await enforce_entity_scope(db, current=current, requested_entity_code=c.get("entity"))
     open_amt = 0.0
     async for inv in db.ar_invoices.find({"customer_id": c["id"], "status": {"$in": ["open", "overdue"]}}, {"_id": 0, "amount": 1}):
         open_amt += float(inv.get("amount") or 0.0)
@@ -392,6 +409,7 @@ async def ar_invoices(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     filt: Dict[str, Any] = {}
     if entity_code:
         filt["entity"] = entity_code
@@ -411,6 +429,11 @@ async def ar_collection_case(
     current=Depends(get_current_user),
 ):
     """Phase 9 — create a case from an overdue AR invoice/customer context."""
+    resolved_entity = await enforce_entity_scope(
+        db,
+        current=current,
+        requested_entity_code=str(body.get("entity") or body.get("entity_code") or "US-HQ"),
+    )
     cid = f"case-ar-{__import__('uuid').uuid4().hex[:10]}"
     ex_id = str(body.get("invoice_id") or cid)
     payload = {
@@ -428,7 +451,7 @@ async def ar_collection_case(
         "owner_name": None,
         "due_date": as_of_now(),
         "financial_exposure": float(body.get("exposure") or 0.0),
-        "entity": str(body.get("entity") or body.get("entity_code") or "US-HQ"),
+        "entity": str(resolved_entity),
         "process": "Order-to-Cash",
         "detected_at": as_of_now(),
         "opened_at": as_of_now(),
@@ -478,6 +501,9 @@ async def ar_dispute(
     body: Dict[str, Any],
     current=Depends(get_current_user),
 ):
+    be = body.get("entity") or body.get("entity_code")
+    if be and str(be).strip():
+        await enforce_entity_scope(db, current=current, requested_entity_code=str(be))
     did = f"dispute-{__import__('uuid').uuid4().hex[:10]}"
     doc = {**body, "id": did, "created_at": as_of_now(), "created_by": current.get("email")}
     await db.ar_disputes.insert_one(dict(doc))
@@ -490,6 +516,9 @@ async def ar_promised_payment(
     body: Dict[str, Any],
     current=Depends(get_current_user),
 ):
+    be = body.get("entity") or body.get("entity_code")
+    if be and str(be).strip():
+        await enforce_entity_scope(db, current=current, requested_entity_code=str(be))
     pid = f"pp-{__import__('uuid').uuid4().hex[:10]}"
     doc = {**body, "id": pid, "created_at": as_of_now(), "created_by": current.get("email")}
     await db.ar_promised_payments.insert_one(dict(doc))
@@ -511,7 +540,7 @@ async def ap_summary(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    kw = _scope_kwargs(entity_code, period_ym, department_id, cost_center_id)
+    kw = await _enforce_scope(current, entity_code, period_ym, department_id, cost_center_id)
     full = await working_capital_dashboard(db, **kw)
     return {
         "source": "working_capital_dashboard.ap_slice",
@@ -530,6 +559,7 @@ async def ap_vendors(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     filt: Dict[str, Any] = {}
     if entity_code:
         filt["entity"] = entity_code
@@ -549,6 +579,7 @@ async def ap_vendor_detail(vendor_id: str, current=Depends(get_current_user)):
         v = await db.vendors.find_one({"vendor_code": vendor_id}, {"_id": 0})
     if not v:
         return {"id": vendor_id, "found": False, "as_of": as_of_now()}
+    await enforce_entity_scope(db, current=current, requested_entity_code=v.get("entity"))
     open_amt = 0.0
     async for inv in db.invoices.find({"vendor_id": v["id"], "status": {"$in": ["open", "overdue"]}}, {"_id": 0, "amount": 1}):
         open_amt += float(inv.get("amount") or 0.0)
@@ -564,6 +595,7 @@ async def ap_invoices(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     filt: Dict[str, Any] = {}
     if entity_code:
         filt["entity"] = entity_code
@@ -583,6 +615,7 @@ async def ap_payment_calendar(
     limit: int = Query(50, ge=1, le=500),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {"status": {"$in": ["open", "overdue"]}}
     if entity_code:
         q["entity"] = entity_code
@@ -597,6 +630,7 @@ async def ap_payment_prioritization(
     limit: int = Query(30, ge=1, le=200),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {"status": {"$in": ["open", "overdue"]}}
     if entity_code:
         q["entity"] = entity_code
@@ -615,6 +649,9 @@ async def ap_payment_hold(
     body: Dict[str, Any],
     current=Depends(get_current_user),
 ):
+    be = body.get("entity") or body.get("entity_code")
+    if be and str(be).strip():
+        await enforce_entity_scope(db, current=current, requested_entity_code=str(be))
     hid = f"hold-{__import__('uuid').uuid4().hex[:10]}"
     doc = {**body, "id": hid, "created_at": as_of_now(), "created_by": current.get("email")}
     await db.ap_payment_holds.insert_one(dict(doc))
@@ -630,6 +667,7 @@ async def treasury_summary(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_phase26_treasury(entity_code=entity_code)
     kw = _scope_kwargs(entity_code, period_ym, department_id, cost_center_id)
     data = await treasury_dashboard(db, **kw)
@@ -647,6 +685,7 @@ async def treasury_summary(
 
 @treasury_router.get("/debt")
 async def treasury_debt(entity_code: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=2000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_phase26_treasury(entity_code=entity_code)
     q: Dict[str, Any] = {"entity": entity_code} if entity_code else {}
     cur = db.debt_register.find(q, {"_id": 0}).sort("maturity_date", 1).skip(offset).limit(limit)
@@ -657,6 +696,7 @@ async def treasury_debt(entity_code: Optional[str] = Query(None), limit: int = Q
 
 @treasury_router.get("/repayment-schedule")
 async def treasury_repayment_schedule(entity_code: Optional[str] = Query(None), debt_id: Optional[str] = Query(None), limit: int = Query(500, ge=1, le=5000), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_phase26_treasury(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -671,6 +711,7 @@ async def treasury_repayment_schedule(entity_code: Optional[str] = Query(None), 
 
 @treasury_router.get("/investments")
 async def treasury_investments(entity_code: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=2000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_phase26_treasury(entity_code=entity_code)
     q: Dict[str, Any] = {"entity": entity_code} if entity_code else {}
     cur = db.investments.find(q, {"_id": 0}).sort("maturity_date", 1).skip(offset).limit(limit)
@@ -681,6 +722,7 @@ async def treasury_investments(entity_code: Optional[str] = Query(None), limit: 
 
 @treasury_router.get("/covenants")
 async def treasury_covenants(entity_code: Optional[str] = Query(None), status: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_phase26_treasury(entity_code=entity_code)
     q: Dict[str, Any] = {"entity": entity_code} if entity_code else {}
     if status:
@@ -693,6 +735,7 @@ async def treasury_covenants(entity_code: Optional[str] = Query(None), status: O
 
 @treasury_router.get("/bank-signatories")
 async def treasury_bank_signatories(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_phase26_treasury(entity_code=entity_code)
     q: Dict[str, Any] = {"entity": entity_code} if entity_code else {}
     cur = db.bank_signatories.find(q, {"_id": 0}).sort("bank_name", 1).limit(200)
@@ -713,6 +756,7 @@ async def treasury_create_case(source_id: str, body: Dict[str, Any], current=Dep
     cid = f"case-treasury-{__import__('uuid').uuid4().hex[:10]}"
     ex_id = f"treasury-{source_id}"
     entity = (debt or inv or cov).get("entity") or current.get("entity") or "US-HQ"
+    entity = await enforce_entity_scope(db, current=current, requested_entity_code=entity)
 
     if cov and cov.get("status") == "breach":
         title = body.get("title") or "Covenant breach follow-up"
@@ -798,6 +842,7 @@ async def treasury_cash_position(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     kw = _scope_kwargs(entity_code, period_ym, department_id, cost_center_id)
     data = await treasury_dashboard(db, **kw)
     accounts = data.get("bank_accounts") or []
@@ -835,6 +880,7 @@ async def treasury_forecast_13_week(
         current=current,
     )
     starting_cash = float(pos.get("cash_balance") or 0.0)
+    entity_code = pos.get("entity_code")
 
     # Payables proxy: next due invoices (open/overdue) by week bucket.
     inv_q: Dict[str, Any] = {"status": {"$in": ["open", "overdue"]}}
@@ -891,6 +937,9 @@ async def treasury_forecast_13_week(
 
 @treasury_router.post("/forecast")
 async def treasury_forecast_save(body: Dict[str, Any], current=Depends(get_current_user)):
+    be = body.get("entity") or body.get("entity_code")
+    if be and str(be).strip():
+        await enforce_entity_scope(db, current=current, requested_entity_code=str(be))
     fid = f"fc-{__import__('uuid').uuid4().hex[:10]}"
     doc = {**body, "id": fid, "created_at": as_of_now(), "created_by": current.get("email")}
     await db.treasury_forecasts.insert_one(dict(doc))
@@ -900,6 +949,9 @@ async def treasury_forecast_save(body: Dict[str, Any], current=Depends(get_curre
 
 @treasury_router.post("/scenario")
 async def treasury_scenario_create(body: Dict[str, Any], current=Depends(get_current_user)):
+    be = body.get("entity") or body.get("entity_code")
+    if be and str(be).strip():
+        await enforce_entity_scope(db, current=current, requested_entity_code=str(be))
     sid = f"sc-{__import__('uuid').uuid4().hex[:10]}"
     doc = {**body, "id": sid, "created_at": as_of_now(), "created_by": current.get("email")}
     await db.treasury_scenarios.insert_one(dict(doc))
@@ -947,6 +999,7 @@ async def budget_versions(
     current=Depends(get_current_user),
 ):
     """Immutable budget versions (Wave 2 data model placeholder)."""
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     cur = db.budget_versions.find(
         {"entity": entity_code} if entity_code else {},
         {"_id": 0},
@@ -957,6 +1010,7 @@ async def budget_versions(
 
 @budget_router.get("")
 async def budget_list(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     cur = db.budget_versions.find({"entity": entity_code} if entity_code else {}, {"_id": 0}).sort("created_at", -1).limit(50)
     items = [v async for v in cur]
     return {"items": items, "count": len(items), "as_of": as_of_now()}
@@ -964,6 +1018,26 @@ async def budget_list(entity_code: Optional[str] = Query(None), current=Depends(
 
 @budget_router.post("/upload")
 async def budget_upload(body: Dict[str, Any], current=Depends(get_current_user)):
+    be = body.get("entity") or body.get("entity_code")
+    if be and str(be).strip():
+        await enforce_entity_scope(db, current=current, requested_entity_code=str(be))
+    lines = body.get("lines")
+    if lines is not None:
+        if not isinstance(lines, list):
+            raise HTTPException(400, "lines must be an array")
+        for i, row in enumerate(lines):
+            if not isinstance(row, dict):
+                raise HTTPException(400, f"lines[{i}] must be an object")
+            code = str(row.get("account_code") or row.get("gl_account") or "").strip()
+            if not code:
+                raise HTTPException(400, f"lines[{i}] requires account_code or gl_account")
+            amt = row.get("amount")
+            if amt is None:
+                raise HTTPException(400, f"lines[{i}] requires amount")
+            try:
+                float(amt)
+            except (TypeError, ValueError) as e:
+                raise HTTPException(400, f"lines[{i}] amount must be numeric") from e
     bid = f"bud-{__import__('uuid').uuid4().hex[:10]}"
     doc = {
         **body,
@@ -990,7 +1064,7 @@ async def budget_vs_actual_alias(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    kw = _scope_kwargs(entity_code, period_ym, department_id, cost_center_id)
+    kw = await _enforce_scope(current, entity_code, period_ym, department_id, cost_center_id)
     fpa = await fpa_dashboard(db, **kw)
     return {"as_of": as_of_now(), "source": "analytics.fpa_dashboard", "data": fpa}
 
@@ -1003,7 +1077,7 @@ async def budget_vs_actual(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    kw = _scope_kwargs(entity_code, period_ym, department_id, cost_center_id)
+    kw = await _enforce_scope(current, entity_code, period_ym, department_id, cost_center_id)
     fpa = await fpa_dashboard(db, **kw)
     return {"source": "analytics.fpa_dashboard", "data": fpa}
 
@@ -1011,6 +1085,9 @@ async def budget_vs_actual(
 # Phase 14 — Forecast vs Actual + Forecast accuracy/bias
 @forecast_router.post("/upload")
 async def forecast_upload(body: Dict[str, Any], current=Depends(get_current_user)):
+    be = body.get("entity") or body.get("entity_code")
+    if be and str(be).strip():
+        await enforce_entity_scope(db, current=current, requested_entity_code=str(be))
     fid = f"fct-{__import__('uuid').uuid4().hex[:10]}"
     doc = {
         **body,
@@ -1026,6 +1103,7 @@ async def forecast_upload(body: Dict[str, Any], current=Depends(get_current_user
 
 @forecast_router.get("")
 async def forecast_list(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     cur = db.forecast_versions.find({"entity": entity_code} if entity_code else {}, {"_id": 0}).sort("created_at", -1).limit(50)
     items = [v async for v in cur]
     return {"items": items, "count": len(items), "as_of": as_of_now()}
@@ -1038,6 +1116,7 @@ async def forecast_vs_actual(
     current=Depends(get_current_user),
 ):
     # Seed-friendly: compare latest forecast lines vs a simple "actual proxy" derived from forecast itself.
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     f = await db.forecast_versions.find_one({"entity": entity_code} if entity_code else {}, {"_id": 0}, sort=[("created_at", -1)])
     lines = (f or {}).get("lines") or []
     rows = []
@@ -1065,8 +1144,9 @@ async def forecast_vs_actual(
 async def forecast_accuracy(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
     data = await forecast_vs_actual(entity_code=entity_code, period_ym=None, current=current)
     items = data.get("items") or []
+    enc = data.get("entity_code")
     if not items:
-        return {"as_of": as_of_now(), "entity_code": entity_code, "found": False, "mape": None, "bias": None, "count": 0}
+        return {"as_of": as_of_now(), "entity_code": enc, "found": False, "mape": None, "bias": None, "count": 0}
     # MAPE + bias based on proxy items
     ape = []
     errs = []
@@ -1078,11 +1158,14 @@ async def forecast_accuracy(entity_code: Optional[str] = Query(None), current=De
         errs.append(act - fc)
     mape = round(100.0 * (sum(ape) / max(len(ape), 1)), 2) if ape else None
     bias = round(sum(errs) / max(len(errs), 1), 2) if errs else None
-    return {"as_of": as_of_now(), "entity_code": entity_code, "found": True, "mape_pct": mape, "bias_amount": bias, "count": len(items)}
+    return {"as_of": as_of_now(), "entity_code": enc, "found": True, "mape_pct": mape, "bias_amount": bias, "count": len(items)}
 
 
 @forecast_router.post("/variance/{variance_id}/comment")
 async def forecast_variance_comment(variance_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    fv = await db.forecast_variances.find_one({"id": variance_id}, {"_id": 0, "entity": 1})
+    if fv and fv.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=fv.get("entity"))
     cid = f"c-{__import__('uuid').uuid4().hex[:8]}"
     item = {"id": cid, "text": str(body.get("text") or ""), "by": current.get("email"), "at": as_of_now()}
     await db.forecast_variances.update_one({"id": variance_id}, {"$push": {"comments": item}, "$set": {"updated_at": as_of_now()}}, upsert=True)
@@ -1098,6 +1181,7 @@ async def budget_variance_list(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code
@@ -1141,11 +1225,16 @@ async def budget_variance_get(variance_id: str, current=Depends(get_current_user
     v = await db.budget_variances.find_one({"id": variance_id}, {"_id": 0})
     if not v:
         return {"id": variance_id, "found": False, "as_of": as_of_now()}
+    if v.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=v.get("entity"))
     return {"variance": v, "found": True, "as_of": as_of_now()}
 
 
 @budget_router.post("/variance/{variance_id}/comment")
 async def budget_variance_comment(variance_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    v = await db.budget_variances.find_one({"id": variance_id}, {"_id": 0, "entity": 1})
+    if v and v.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=v.get("entity"))
     comment_id = f"c-{__import__('uuid').uuid4().hex[:8]}"
     item = {"id": comment_id, "text": str(body.get("text") or ""), "by": current.get("email"), "at": as_of_now()}
     await db.budget_variances.update_one({"id": variance_id}, {"$push": {"comments": item}, "$set": {"updated_at": as_of_now()}})
@@ -1155,6 +1244,9 @@ async def budget_variance_comment(variance_id: str, body: Dict[str, Any], curren
 
 @budget_router.post("/variance/{variance_id}/approve-explanation")
 async def budget_variance_approve_explanation(variance_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    v = await db.budget_variances.find_one({"id": variance_id}, {"_id": 0, "entity": 1})
+    if v and v.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=v.get("entity"))
     explanation = body.get("explanation")
     res = await db.budget_variances.update_one(
         {"id": variance_id},
@@ -1169,11 +1261,16 @@ async def budget_get(budget_id: str, current=Depends(get_current_user)):
     b = await db.budget_versions.find_one({"id": budget_id}, {"_id": 0})
     if not b:
         return {"id": budget_id, "found": False, "as_of": as_of_now()}
+    if b.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=b.get("entity"))
     return {"budget": b, "found": True, "as_of": as_of_now()}
 
 
 @budget_router.post("/{budget_id}/approve")
 async def budget_approve(budget_id: str, current=Depends(get_current_user)):
+    b = await db.budget_versions.find_one({"id": budget_id}, {"_id": 0, "entity": 1})
+    if b and b.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=b.get("entity"))
     res = await db.budget_versions.update_one(
         {"id": budget_id},
         {"$set": {"status": "approved", "approved_by": current.get("email"), "approved_at": as_of_now()}},
@@ -1184,6 +1281,9 @@ async def budget_approve(budget_id: str, current=Depends(get_current_user)):
 
 @budget_router.post("/{budget_id}/lock")
 async def budget_lock(budget_id: str, current=Depends(get_current_user)):
+    b = await db.budget_versions.find_one({"id": budget_id}, {"_id": 0, "entity": 1})
+    if b and b.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=b.get("entity"))
     res = await db.budget_versions.update_one(
         {"id": budget_id},
         {"$set": {"locked": True, "locked_at": as_of_now(), "locked_by": current.get("email")}},
@@ -1194,6 +1294,9 @@ async def budget_lock(budget_id: str, current=Depends(get_current_user)):
 
 @budget_router.post("/{budget_id}/unlock")
 async def budget_unlock(budget_id: str, current=Depends(get_current_user)):
+    b = await db.budget_versions.find_one({"id": budget_id}, {"_id": 0, "entity": 1})
+    if b and b.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=b.get("entity"))
     res = await db.budget_versions.update_one(
         {"id": budget_id},
         {"$set": {"locked": False, "unlocked_at": as_of_now(), "unlocked_by": current.get("email")}},

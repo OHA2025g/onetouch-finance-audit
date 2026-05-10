@@ -1,24 +1,27 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import { useMastersFilters } from "../lib/MastersFilterContext";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { StatCard } from "../components/StatCard";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
 
 export default function Copilot2WorkbenchPage() {
   const { hrefWithMasterParams } = useMastersFilters();
+  const dashboardParams = useDashboardFilterParams();
   const [d, setD] = useState(null);
 
   const chatHref = useMemo(() => hrefWithMasterParams("/app/copilot"), [hrefWithMasterParams]);
 
-  useEffect(() => {
-    Promise.all([
-      http.get("/copilot/sessions", { params: { limit: 50 } }),
-      http.get("/copilot/index-status"),
-      http.get("/copilot/retrieval-configs"),
+  const load = useCallback(() => {
+    const params = { limit: 50, ...dashboardParams };
+    return Promise.all([
+      http.get("/copilot/sessions", { params }),
+      http.get("/copilot/index-status", { params: dashboardParams }),
+      http.get("/copilot/retrieval-configs", { params: dashboardParams }),
     ])
       .then(([sess, idx, cfg]) => {
         const rows = Array.isArray(sess.data) ? sess.data : [];
@@ -31,7 +34,11 @@ export default function Copilot2WorkbenchPage() {
         });
       })
       .catch(() => toast.error("Failed to load Copilot 2.0 workbench"));
-  }, []);
+  }, [dashboardParams]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   if (!d) {
     return (

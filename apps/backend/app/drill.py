@@ -132,16 +132,35 @@ async def drill_vendor(db, vendor_id: str) -> Dict[str, Any]:
     }
 
 
-async def drill_user(db, email: str) -> Dict[str, Any]:
-    u = await db.users.find_one({"email": email}, {"_id": 0, "password_hash": 0})
+async def drill_user(db, raw_id: str) -> Dict[str, Any]:
+    """Resolve ``user`` drill by email, or by ``user_access_events.id`` (e.g. ``UA-17`` from exception source_record_id)."""
+    raw = (raw_id or "").strip()
+    email = raw
+    # Exceptions from inactive-user control store access_event id, not email — resolve first.
+    if "@" not in raw:
+        ev_by_id = await db.user_access_events.find_one({"id": raw}, {"_id": 0})
+        if ev_by_id and ev_by_id.get("user_email"):
+            email = str(ev_by_id["user_email"]).strip()
+
     access_events = [a async for a in db.user_access_events.find({"user_email": email}, {"_id": 0}).sort("event_ts", -1).limit(50)]
+    u = await db.users.find_one({"email": email}, {"_id": 0, "password_hash": 0})
+    if not u:
+        ent = access_events[0].get("entity") if access_events else None
+        term = bool(access_events and access_events[0].get("user_terminated"))
+        u = {
+            "email": email,
+            "full_name": email,
+            "role": None,
+            "entity": ent,
+            "status": "terminated" if term else "inactive",
+        }
     roles = [r async for r in db.sod_role_map.find({"user_email": email}, {"_id": 0})]
     cases = [c async for c in db.cases.find({"owner_email": email}, {"_id": 0}).sort("due_date", 1).limit(30)]
     journals_posted = [j async for j in db.journals.find({"created_by": email}, {"_id": 0}).sort("created_at", -1).limit(20)]
     audit_log = [l async for l in db.audit_logs.find({"actor_user_email": email}, {"_id": 0}).sort("event_ts", -1).limit(30)]
     return {
         "type": "user",
-        "primary": u or {"email": email, "full_name": "Unknown", "status": "unknown"},
+        "primary": u,
         "roles": roles,
         "access_events": access_events,
         "cases": cases,

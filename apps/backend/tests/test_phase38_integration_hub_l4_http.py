@@ -49,6 +49,11 @@ class TestIntegrationHubContracts:
         ls = requests.get(f"{API}/integrations/connectors", headers=_h(token), timeout=60)
         assert ls.status_code == 200, ls.text
 
+        mx = requests.get(f"{API}/integrations/connectors/matrix", headers=_h(token), timeout=60)
+        assert mx.status_code == 200, mx.text
+        mj = mx.json()
+        assert "configured" in mj and "catalog" in mj
+
         # Create connector
         cr = requests.post(
             f"{API}/integrations/connectors",

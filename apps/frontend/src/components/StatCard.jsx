@@ -1,5 +1,6 @@
 import React from "react";
 import clsx from "clsx";
+import { toProperHeadingLabel } from "../lib/headingCase";
 
 function topAccent(severity) {
   if (severity === "critical") return "hsl(var(--destructive))";
@@ -24,11 +25,11 @@ export const StatCard = ({ label, value, unit, trend, severity, testId, subtle }
       <div className="h-0.5 w-full shrink-0" style={{ backgroundColor: accent }} aria-hidden />
       <div className="p-5">
         <div className="mb-3 flex items-center justify-between">
-          <span className="crt-overline">{label}</span>
+          <span className="crt-overline">{toProperHeadingLabel(label)}</span>
           {trend != null && (
             <span
               className={clsx(
-                "crt-num text-[10px] font-medium uppercase tracking-wider",
+                "crt-num text-[10px] font-medium tracking-wide",
                 trend >= 0 ? "text-[hsl(var(--chart-4))]" : "text-[hsl(var(--destructive))]"
               )}
             >

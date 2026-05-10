@@ -1,69 +1,96 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { StatCard } from "../components/StatCard";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
+import { errorMessageFromAxios } from "../lib/apiErrorMessage";
+
+const EMPTY_BENCH = {
+  connectorCount: 0,
+  syncLogCount: 0,
+  catalogSize: 0,
+  configuredCount: 0,
+  firstConnectorLabel: "—",
+  firstConnectorRuns: 0,
+  firstHealthStatus: "—",
+  connectors: [],
+  logItems: [],
+};
 
 export default function IntegrationHubWorkbenchPage() {
+  const dashboardParams = useDashboardFilterParams();
   const [d, setD] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadBanner, setLoadBanner] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadBanner(null);
+    try {
+      const [listRes, logsRes, matrixRes] = await Promise.all([
+        http.get("/integrations/connectors", { params: dashboardParams }),
+        http.get("/integrations/connectors/sync-logs", { params: { limit: 100, ...dashboardParams } }),
+        http.get("/integrations/connectors/matrix", { params: dashboardParams }),
+      ]);
+      const connectors = Array.isArray(listRes.data) ? listRes.data : [];
+      const logItems = logsRes.data?.items || [];
+      const catalog = matrixRes.data?.catalog || [];
+      const configured = matrixRes.data?.configured || [];
+
+      let firstRuns = 0;
+      let firstHealthStatus = "—";
+      if (connectors[0]?.id) {
+        const cid = connectors[0].id;
+        try {
+          const [h, r] = await Promise.all([
+            http.get(`/integrations/connectors/${cid}/health`, { params: dashboardParams }),
+            http.get(`/integrations/connectors/${cid}/runs`, { params: dashboardParams }),
+          ]);
+          const runs = Array.isArray(r.data) ? r.data : [];
+          firstRuns = runs.length;
+          firstHealthStatus = h.data?.connector?.status || h.data?.last_run?.status || "—";
+        } catch {
+          /* first connector may be missing in rare DB states */
+        }
+      }
+
+      setD({
+        connectorCount: connectors.length,
+        syncLogCount: logsRes.data?.count ?? logItems.length,
+        catalogSize: catalog.length,
+        configuredCount: Array.isArray(configured) ? configured.length : 0,
+        firstConnectorLabel: connectors[0] ? `${connectors[0].name || connectors[0].id} (${connectors[0].provider || "?"})` : "—",
+        firstConnectorRuns: firstRuns,
+        firstHealthStatus,
+        connectors: connectors.slice(0, 25),
+        logItems: logItems.slice(0, 30),
+      });
+    } catch (e) {
+      const msg = errorMessageFromAxios(e, "Failed to load integration hub workbench");
+      toast.error(msg);
+      setLoadBanner(msg);
+      setD({ ...EMPTY_BENCH });
+    } finally {
+      setLoading(false);
+    }
+  }, [dashboardParams]);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const [listRes, logsRes, matrixRes] = await Promise.all([
-          http.get("/integrations/connectors"),
-          http.get("/integrations/connectors/sync-logs", { params: { limit: 100 } }),
-          http.get("/integrations/connectors/matrix"),
-        ]);
-        const connectors = Array.isArray(listRes.data) ? listRes.data : [];
-        const logItems = logsRes.data?.items || [];
-        const catalog = matrixRes.data?.catalog || [];
-        const configured = matrixRes.data?.configured || [];
-
-        let firstRuns = 0;
-        let firstHealthStatus = "—";
-        if (connectors[0]?.id) {
-          const cid = connectors[0].id;
-          try {
-            const [h, r] = await Promise.all([
-              http.get(`/integrations/connectors/${cid}/health`),
-              http.get(`/integrations/connectors/${cid}/runs`),
-            ]);
-            const runs = Array.isArray(r.data) ? r.data : [];
-            firstRuns = runs.length;
-            firstHealthStatus = h.data?.connector?.status || h.data?.last_run?.status || "—";
-          } catch {
-            /* first connector may be missing in rare DB states */
-          }
-        }
-
-        setD({
-          connectorCount: connectors.length,
-          syncLogCount: logsRes.data?.count ?? logItems.length,
-          catalogSize: catalog.length,
-          configuredCount: Array.isArray(configured) ? configured.length : 0,
-          firstConnectorLabel: connectors[0] ? `${connectors[0].name || connectors[0].id} (${connectors[0].provider || "?"})` : "—",
-          firstConnectorRuns: firstRuns,
-          firstHealthStatus,
-          connectors: connectors.slice(0, 25),
-          logItems: logItems.slice(0, 30),
-        });
-      } catch {
-        toast.error("Failed to load integration hub workbench");
-      }
-    };
     load();
-  }, []);
+  }, [load]);
 
-  if (!d) {
+  if (loading) {
     return (
       <div className="crt-overline p-8 text-muted-foreground" data-testid="integration-hub-workbench-loading">
         Loading production integration hub…
       </div>
     );
   }
+
+  if (!d) return null;
 
   return (
     <PageShell maxWidth="max-w-[1600px]">
@@ -73,6 +100,15 @@ export default function IntegrationHubWorkbenchPage() {
           title="Connectors · sync logs · health"
           subtitle="SRS paths GET /integrations/connectors, /sync-logs, /matrix — first connector health + runs when instances exist."
         />
+
+        {loadBanner ? (
+          <div
+            className="mb-4 rounded-sm border border-[hsl(var(--destructive)/0.35)] bg-[hsl(var(--destructive)/0.06)] px-4 py-3 text-sm text-foreground"
+            data-testid="integration-hub-load-error"
+          >
+            {loadBanner} Tables below may be empty until the API is reachable.
+          </div>
+        ) : null}
 
         <MastersFilterStrip className="mb-6" />
 

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { http } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { RC_STROKE, RC_TICK, rcTooltipStyle } from "../../lib/rechartsTheme";
 import { SectionCard } from "../PageShell";
@@ -19,6 +20,7 @@ function workflowLabel(s) {
  * Materiality Engine — linked to engagement; benchmarks, override, approval, exception flags.
  */
 export default function MaterialitySetupPanel({ engagementId, materiality, onMaterialityUpdated, currentUserEmail }) {
+  const dashboardParams = useDashboardFilterParams();
   const [saving, setSaving] = useState(false);
   const [workflowBusy, setWorkflowBusy] = useState(false);
   const email = currentUserEmail || "auditor@onetouch.ai";
@@ -58,7 +60,7 @@ export default function MaterialitySetupPanel({ engagementId, materiality, onMat
     };
     setSaving(true);
     try {
-      const { data } = await http.post(`/audit-engagements/${encodeURIComponent(engagementId)}/materiality`, body);
+      const { data } = await http.post(`/audit-engagements/${encodeURIComponent(engagementId)}/materiality`, body, { params: dashboardParams });
       onMaterialityUpdated(data);
       toast.success("Materiality calculated");
     } catch (err) {
@@ -74,10 +76,14 @@ export default function MaterialitySetupPanel({ engagementId, materiality, onMat
     }
     setWorkflowBusy(true);
     try {
-      const { data } = await http.post(`/materiality/${materiality.id}/approve`, {
-        approval_status,
-        ...extra,
-      });
+      const { data } = await http.post(
+        `/materiality/${materiality.id}/approve`,
+        {
+          approval_status,
+          ...extra,
+        },
+        { params: dashboardParams },
+      );
       onMaterialityUpdated(data);
       toast.success(`Status: ${workflowLabel(approval_status)}`);
     } catch (err) {

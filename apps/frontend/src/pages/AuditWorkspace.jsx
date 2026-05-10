@@ -8,8 +8,7 @@ import clsx from "clsx";
 import InsightPanel from "../components/InsightPanel";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
-import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 
 export default function AuditWorkspace() {
@@ -19,22 +18,10 @@ export default function AuditWorkspace() {
   const [detail, setDetail] = useState(null);
   const [running, setRunning] = useState(false);
   const [filter, setFilter] = useState({ process: "", crit: "" });
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId } = useMastersFilters();
-
-  const scopeParams = useCallback(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId]
-  );
+  const scopeParams = useDashboardFilterParams();
 
   const load = useCallback(async () => {
-    const { data: d } = await http.get("/dashboard/audit", { params: scopeParams() });
+    const { data: d } = await http.get("/dashboard/audit", { params: scopeParams });
     setData(d);
     setSelected((prev) => {
       if (!d.controls.length) return null;
@@ -50,7 +37,7 @@ export default function AuditWorkspace() {
   useEffect(() => {
     if (!selected) return;
     http
-      .get(`/controls/${selected}`, { params: scopeParams() })
+      .get(`/controls/${selected}`, { params: scopeParams })
       .then((r) => setDetail(r.data))
       .catch(() => toast.error("Failed to load control"));
   }, [selected, scopeParams]);
@@ -62,7 +49,7 @@ export default function AuditWorkspace() {
       const { data: r } = await http.post(`/controls/${selected}/run`);
       toast.success(`Run complete · ${r.exceptions} exceptions`);
       await load();
-      const { data: det } = await http.get(`/controls/${selected}`, { params: scopeParams() });
+      const { data: det } = await http.get(`/controls/${selected}`, { params: scopeParams });
       setDetail(det);
     } catch {
       toast.error("Run failed");

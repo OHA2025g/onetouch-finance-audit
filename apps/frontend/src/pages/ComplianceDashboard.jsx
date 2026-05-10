@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { http } from "../lib/api";
 import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import { StatCard } from "../components/StatCard";
 import { SeverityBadge } from "../components/Badges";
@@ -14,20 +14,27 @@ import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, Dat
 import { RC_STROKE, RC_TICK, rcTooltipStyle } from "../lib/rechartsTheme";
 import { exceptionSourceDrillPath } from "../lib/drillPaths";
 
+/** Prefer email for user drill when present (access_event exceptions store event id in source_record_id). */
+function userDrillPathFromException(e) {
+  const em = e?.source_record_user_email;
+  if (em && String(em).includes("@")) {
+    return `/app/drill/user/${encodeURIComponent(String(em).trim())}`;
+  }
+  const sid = e?.source_record_id;
+  if (sid != null && String(sid).trim() !== "") {
+    return `/app/drill/user/${encodeURIComponent(String(sid).trim())}`;
+  }
+  return null;
+}
+
 export default function ComplianceDashboard() {
   const [d, setD] = useState(null);
   const nav = useNavigate();
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId, hrefWithMasterParams } = useMastersFilters();
+  const { hrefWithMasterParams } = useMastersFilters();
+  const dashboardParams = useDashboardFilterParams();
   useEffect(() => {
-    const params = buildDashboardFilterParams({
-      entityCode,
-      periodYm,
-      periodExplicit,
-      departmentId,
-      costCenterId,
-    });
-    http.get("/dashboard/compliance", { params }).then((r) => setD(r.data));
-  }, [entityCode, periodYm, periodExplicit, departmentId, costCenterId]);
+    http.get("/dashboard/compliance", { params: dashboardParams }).then((r) => setD(r.data));
+  }, [dashboardParams]);
   if (!d) return <div className="crt-overline text-muted-foreground p-8">Loading compliance…</div>;
   const k = d.kpis;
 
@@ -68,6 +75,7 @@ export default function ComplianceDashboard() {
             )}
             {d.sod_conflicts.map(e => {
               const srcPath = exceptionSourceDrillPath(e);
+              const userPath = userDrillPathFromException(e);
               const linkChip =
                 "crt-num rounded-sm border border-zinc-300 bg-white px-2 py-1 text-[9px] uppercase tracking-wider text-primary transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-950 dark:hover:bg-zinc-900";
               return (
@@ -95,7 +103,11 @@ export default function ComplianceDashboard() {
                     {srcPath ? (
                       <Link to={srcPath} className={linkChip}>Source</Link>
                     ) : null}
-                    <Link to={`/app/drill/user/${encodeURIComponent(e.source_record_id || "")}`} className={linkChip}>User</Link>
+                    {userPath ? (
+                      <Link to={userPath} className={linkChip}>
+                        User
+                      </Link>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -127,7 +139,9 @@ export default function ComplianceDashboard() {
               </tr>
             </DataTableHead>
             <DataTableBody>
-              {d.access_violations.slice(0, 12).map(e => (
+              {d.access_violations.slice(0, 12).map(e => {
+                const userPath = userDrillPathFromException(e);
+                return (
                 <DataTableRow
                   key={e.id}
                   onClick={() => nav(`/app/evidence/${e.id}`)}
@@ -135,15 +149,20 @@ export default function ComplianceDashboard() {
                   className="cursor-pointer"
                 >
                   <DataTableTd className="crt-num text-xs" onClick={(ev) => ev.stopPropagation()}>
-                    <Link to={`/app/drill/user/${encodeURIComponent(e.source_record_id || "")}`} className="font-medium text-primary hover:underline">
-                      {e.source_record_id || e.summary.split(" ").slice(2, 4).join(" ")}
-                    </Link>
+                    {userPath ? (
+                      <Link to={userPath} className="font-medium text-primary hover:underline">
+                        {e.source_record_user_email || e.source_record_id || e.summary.split(" ").slice(2, 4).join(" ")}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </DataTableTd>
                   <DataTableTd className="crt-num text-xs text-zinc-800 dark:text-zinc-200">{e.entity}</DataTableTd>
                   <DataTableTd className="text-xs text-zinc-800 dark:text-zinc-200">{e.title}</DataTableTd>
                   <DataTableTd><SeverityBadge severity={e.severity} /></DataTableTd>
                 </DataTableRow>
-              ))}
+                );
+              })}
             </DataTableBody>
           </DataTable>
         </SectionCard>

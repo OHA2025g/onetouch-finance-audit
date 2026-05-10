@@ -2,17 +2,19 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { http } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { SectionCard } from "../../components/PageShell";
 
 export default function OpinionPage() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const [op, setOp] = useState(null);
 
   const load = useCallback(async () => {
-    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/opinion`);
+    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/opinion`, { params: dashboardParams });
     setOp(data);
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     load().catch(() => setOp(null));
@@ -20,7 +22,7 @@ export default function OpinionPage() {
 
   const gen = async () => {
     try {
-      const { data } = await http.post(`/audit-engagements/${encodeURIComponent(eid)}/opinion/generate`);
+      const { data } = await http.post(`/audit-engagements/${encodeURIComponent(eid)}/opinion/generate`, {}, { params: dashboardParams });
       setOp(data);
       toast.success("Opinion regenerated");
     } catch {

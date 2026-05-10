@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/reconciliations", tags=["reconciliations"])
@@ -27,6 +28,7 @@ async def recon_list(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code
@@ -42,6 +44,9 @@ async def recon_list(
 
 @router.post("")
 async def recon_create(body: Dict[str, Any], current=Depends(get_current_user)):
+    be = body.get("entity") or body.get("entity_code")
+    if be and str(be).strip():
+        await enforce_entity_scope(db, current=current, requested_entity_code=str(be))
     rid = f"rec-{__import__('uuid').uuid4().hex[:10]}"
     doc = {
         **body,
@@ -62,11 +67,18 @@ async def recon_get(reconciliation_id: str, current=Depends(get_current_user)):
     r = await db.reconciliations.find_one({"id": reconciliation_id}, {"_id": 0})
     if not r:
         raise HTTPException(404, "Reconciliation not found")
+    if r.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=r.get("entity"))
     return {"reconciliation": r, "as_of": _now()}
 
 
 @router.patch("/{reconciliation_id}")
 async def recon_patch(reconciliation_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    r0 = await db.reconciliations.find_one({"id": reconciliation_id}, {"_id": 0, "entity": 1})
+    if not r0:
+        raise HTTPException(404, "Reconciliation not found")
+    if r0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=r0.get("entity"))
     await db.reconciliations.update_one({"id": reconciliation_id}, {"$set": {**body, "updated_at": _now()}})
     await audit_log(current["email"], "reconciliation_update", "reconciliation", reconciliation_id, {"fields": list(body.keys())})
     return {"status": "ok", "as_of": _now()}
@@ -74,6 +86,11 @@ async def recon_patch(reconciliation_id: str, body: Dict[str, Any], current=Depe
 
 @router.post("/{reconciliation_id}/items")
 async def recon_add_items(reconciliation_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    r0 = await db.reconciliations.find_one({"id": reconciliation_id}, {"_id": 0, "entity": 1})
+    if not r0:
+        raise HTTPException(404, "Reconciliation not found")
+    if r0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=r0.get("entity"))
     items = body.get("items") or []
     await db.reconciliations.update_one({"id": reconciliation_id}, {"$push": {"items": {"$each": items}}, "$set": {"updated_at": _now()}})
     await audit_log(current["email"], "reconciliation_add_items", "reconciliation", reconciliation_id, {"count": len(items)})
@@ -82,6 +99,11 @@ async def recon_add_items(reconciliation_id: str, body: Dict[str, Any], current=
 
 @router.post("/{reconciliation_id}/evidence")
 async def recon_add_evidence(reconciliation_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    r0 = await db.reconciliations.find_one({"id": reconciliation_id}, {"_id": 0, "entity": 1})
+    if not r0:
+        raise HTTPException(404, "Reconciliation not found")
+    if r0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=r0.get("entity"))
     ev_id = f"ev-{__import__('uuid').uuid4().hex[:8]}"
     ev = {"id": ev_id, "type": body.get("type") or "link", "url": body.get("url"), "notes": body.get("notes"), "by": current.get("email"), "at": _now()}
     await db.reconciliations.update_one({"id": reconciliation_id}, {"$push": {"evidence": ev}, "$set": {"updated_at": _now()}})
@@ -91,6 +113,11 @@ async def recon_add_evidence(reconciliation_id: str, body: Dict[str, Any], curre
 
 @router.post("/{reconciliation_id}/submit")
 async def recon_submit(reconciliation_id: str, current=Depends(get_current_user)):
+    r0 = await db.reconciliations.find_one({"id": reconciliation_id}, {"_id": 0, "entity": 1})
+    if not r0:
+        raise HTTPException(404, "Reconciliation not found")
+    if r0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=r0.get("entity"))
     await db.reconciliations.update_one(
         {"id": reconciliation_id},
         {"$set": {"status": "submitted", "submitted_at": _now(), "submitted_by": current.get("email")}, "$push": {"logs": {"at": _now(), "by": current.get("email"), "action": "submit"}}},
@@ -101,6 +128,13 @@ async def recon_submit(reconciliation_id: str, current=Depends(get_current_user)
 
 @router.post("/{reconciliation_id}/approve")
 async def recon_approve(reconciliation_id: str, current=Depends(get_current_user)):
+    r0 = await db.reconciliations.find_one({"id": reconciliation_id}, {"_id": 0, "entity": 1, "status": 1})
+    if not r0:
+        raise HTTPException(404, "Reconciliation not found")
+    if r0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=r0.get("entity"))
+    if r0.get("status") != "submitted":
+        raise HTTPException(409, "Reconciliation must be submitted before it can be approved")
     await db.reconciliations.update_one(
         {"id": reconciliation_id},
         {"$set": {"status": "approved", "approved_at": _now(), "approved_by": current.get("email")}, "$push": {"logs": {"at": _now(), "by": current.get("email"), "action": "approve"}}},
@@ -111,6 +145,11 @@ async def recon_approve(reconciliation_id: str, current=Depends(get_current_user
 
 @router.post("/{reconciliation_id}/reopen")
 async def recon_reopen(reconciliation_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    r0 = await db.reconciliations.find_one({"id": reconciliation_id}, {"_id": 0, "entity": 1})
+    if not r0:
+        raise HTTPException(404, "Reconciliation not found")
+    if r0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=r0.get("entity"))
     reason = body.get("reason")
     await db.reconciliations.update_one(
         {"id": reconciliation_id},
@@ -128,6 +167,7 @@ async def recon_create_case(reconciliation_id: str, body: Dict[str, Any], curren
     now = _now()
     rec = await db.reconciliations.find_one({"id": reconciliation_id}, {"_id": 0}) or {}
     entity = body.get("entity") or rec.get("entity") or current.get("entity") or "US-HQ"
+    entity = await enforce_entity_scope(db, current=current, requested_entity_code=str(entity))
     process = "Record-to-Report"
     exposure = float(rec.get("variance_amount") or body.get("financial_exposure") or 0.0)
     due_date = body.get("due_date") or rec.get("due_date") or now

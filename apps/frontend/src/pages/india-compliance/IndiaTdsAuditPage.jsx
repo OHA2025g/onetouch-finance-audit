@@ -2,10 +2,12 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { http } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { SectionCard } from "../../components/PageShell";
 
 export default function IndiaTdsAuditPage() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const [ledger, setLedger] = useState("");
   const [challan, setChallan] = useState("");
@@ -15,9 +17,9 @@ export default function IndiaTdsAuditPage() {
   const [history, setHistory] = useState([]);
 
   const load = useCallback(async () => {
-    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/tds/reconciliation`);
+    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/tds/reconciliation`, { params: dashboardParams });
     setHistory(data.items || []);
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     load().catch(() => {});
@@ -27,13 +29,17 @@ export default function IndiaTdsAuditPage() {
     e.preventDefault();
     const n = (v) => (v === "" ? 0 : parseFloat(v));
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/tds/reconciliation`, {
-        ledger_tds: n(ledger),
-        challan_tds: n(challan),
-        delayed_payment_days: parseInt(days, 10) || 0,
-        expected_deduction_rate_pct: expRate === "" ? null : n(expRate),
-        applied_deduction_rate_pct: appRate === "" ? null : n(appRate),
-      });
+      await http.post(
+        `/audit-engagements/${encodeURIComponent(eid)}/tds/reconciliation`,
+        {
+          ledger_tds: n(ledger),
+          challan_tds: n(challan),
+          delayed_payment_days: parseInt(days, 10) || 0,
+          expected_deduction_rate_pct: expRate === "" ? null : n(expRate),
+          applied_deduction_rate_pct: appRate === "" ? null : n(appRate),
+        },
+        { params: dashboardParams },
+      );
       await load();
       toast.success("TDS reconciliation saved");
     } catch {

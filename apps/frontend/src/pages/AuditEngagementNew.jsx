@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 
@@ -9,6 +10,7 @@ const AUDIT_TYPES = ["statutory", "internal", "GST", "tax", "IFC", "special audi
 
 export default function AuditEngagementNew() {
   const nav = useNavigate();
+  const dashboardParams = useDashboardFilterParams();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     engagement_id: "",
@@ -40,29 +42,33 @@ export default function AuditEngagementNew() {
       const scopeLines = form.scope_lines.split("\n").map((s) => s.trim()).filter(Boolean);
       const scopes = scopeLines.map((description) => ({ description }));
       const structuredObjectives = objectives.map((title) => ({ title, description: "" }));
-      await http.post("/audit-engagements", {
-        engagement_id: form.engagement_id.trim(),
-        entity_name: form.entity_name.trim(),
-        financial_year: form.financial_year.trim(),
-        audit_type: form.audit_type,
-        audit_scope: form.audit_scope.trim(),
-        audit_objectives: objectives,
-        start_date: form.start_date,
-        end_date: form.end_date,
-        audit_partner: form.audit_partner.trim(),
-        audit_manager: form.audit_manager.trim(),
-        assigned_team: team,
-        status: form.status,
-        risk_level: form.risk_level,
-        scopes,
-        objectives: structuredObjectives,
-        timeline: {
-          planning_start: form.tl_planning || null,
-          fieldwork_start: form.tl_field_start || null,
-          fieldwork_end: form.tl_field_end || null,
-          reporting_date: form.tl_reporting || null,
+      await http.post(
+        "/audit-engagements",
+        {
+          engagement_id: form.engagement_id.trim(),
+          entity_name: form.entity_name.trim(),
+          financial_year: form.financial_year.trim(),
+          audit_type: form.audit_type,
+          audit_scope: form.audit_scope.trim(),
+          audit_objectives: objectives,
+          start_date: form.start_date,
+          end_date: form.end_date,
+          audit_partner: form.audit_partner.trim(),
+          audit_manager: form.audit_manager.trim(),
+          assigned_team: team,
+          status: form.status,
+          risk_level: form.risk_level,
+          scopes,
+          objectives: structuredObjectives,
+          timeline: {
+            planning_start: form.tl_planning || null,
+            fieldwork_start: form.tl_field_start || null,
+            fieldwork_end: form.tl_field_end || null,
+            reporting_date: form.tl_reporting || null,
+          },
         },
-      });
+        { params: dashboardParams },
+      );
       toast.success("Engagement created");
       nav(`/app/audit-planning/engagements/${encodeURIComponent(form.engagement_id.trim())}`);
     } catch (err) {

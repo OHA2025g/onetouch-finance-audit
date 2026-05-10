@@ -41,12 +41,12 @@ SYSTEM_PROMPT = (
 async def _retrieve_context(db, question: str, k: int = 8) -> List[Dict[str, Any]]:
     """Retrieval via semantic embeddings, with TF-IDF fallback if embeddings not built."""
     try:
-        from app.embeddings.retrieval import hybrid_search
+        from app.embeddings.retrieval import hybrid_search_scoped
 
         # If embeddings are empty, do not auto-rebuild here (admins control index lifecycle).
         count = await db.embedding_chunks.count_documents({})
         if count > 0:
-            return await hybrid_search(db, query=question, k=k)
+            return await hybrid_search_scoped(db, query=question, k=k)
     except Exception:
         pass
     # Fallback to legacy TF-IDF (may require sklearn; keep lazy import)
@@ -71,11 +71,21 @@ async def ask_copilot(
     user_email: str,
     session_id: Optional[str] = None,
     mode: Optional[str] = None,
+    *,
+    user_role: Optional[str] = None,
+    scope: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     api_key = os.environ.get("EMERGENT_LLM_KEY", "")
     session_id = session_id or str(uuid.uuid4())
 
-    context = await _retrieve_context(db, question, k=8)
+    # Phase 37/40 — enforce scope and a conservative RBAC allowlist for retrieval.
+    scope = scope or {}
+    role = (user_role or "").strip()
+    allowed_source_types: Optional[List[str]] = None
+    if role == "External Auditor":
+        allowed_source_types = ["control", "exception", "case", "policy", "engagement", "risk", "working_paper"]
+
+    context = await _retrieve_context_scoped(db, question, k=8, scope=scope, allowed_source_types=allowed_source_types)
     context_block = "\n".join([f"[#{i+1}] ({c['type']}) {c['label']}\n{c['text']}" for i, c in enumerate(context)])
 
     user_prompt = (
@@ -119,15 +129,17 @@ async def ask_copilot(
         confidence = 0.2
         needs_review = True
 
-    citations = [
-        {
-            "source_type": c["type"],
-            "source_id": c["id"],
-            "label": c["label"],
-            "snippet": c["text"][:220],
-        }
-        for c in context
-    ]
+    citations = []
+    for c in context:
+        citations.append(
+            {
+                "source_type": c["type"],
+                "source_id": c["id"],
+                "label": c["label"],
+                "snippet": (c.get("text") or "")[:220],
+                "app_path": _citation_app_path(c.get("type"), c.get("id")),
+            }
+        )
 
     now = _iso(datetime.now(timezone.utc))
     session_doc = {
@@ -157,3 +169,54 @@ async def ask_copilot(
         "created_at": now,
         "mode": mode,
     }
+
+
+async def _retrieve_context_scoped(
+    db,
+    question: str,
+    *,
+    k: int = 8,
+    scope: Optional[Dict[str, Any]] = None,
+    allowed_source_types: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Same as `_retrieve_context`, but allows scope/RBAC to constrain retrieval."""
+    scope = scope or {}
+    try:
+        from app.embeddings.retrieval import hybrid_search_scoped
+
+        count = await db.embedding_chunks.count_documents({})
+        if count > 0:
+            return await hybrid_search_scoped(
+                db,
+                query=question,
+                k=k,
+                scope=scope,
+                allowed_source_types=allowed_source_types,
+            )
+    except Exception:
+        pass
+
+    # Legacy TF-IDF fallback cannot scope/RBAC-filter reliably; return best-effort.
+    from .vector_store import INDEX
+
+    if INDEX.matrix is None or not INDEX.docs:
+        await INDEX.rebuild(db)
+    return INDEX.search(question, k=k)
+
+
+def _citation_app_path(source_type: Optional[str], source_id: Optional[str]) -> Optional[str]:
+    """Best-effort deep link used by the Copilot UI for citations."""
+    if not source_type or not source_id:
+        return None
+    t = str(source_type).strip().lower()
+    sid = str(source_id)
+    if t == "control":
+        return f"/app/drill/control/{sid}"
+    if t == "exception":
+        return f"/app/evidence/{sid}"
+    if t == "case":
+        return f"/app/cases/{sid}"
+    if t == "working_paper":
+        # See drillPaths.js: prefer engagement deep-link when available, but we only have WP id here.
+        return None
+    return None

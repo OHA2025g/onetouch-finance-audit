@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import { SignOut, CaretLeft, Lightning, Sun, Moon, List } from "@phosphor-icons/react";
 import { useAuth } from "../lib/auth";
@@ -7,13 +7,22 @@ import clsx from "clsx";
 import { getSidebarNavGroups } from "../lib/routeConfig";
 import { MastersFilterProvider } from "../lib/MastersFilterContext";
 import Breadcrumbs from "./Breadcrumbs";
+import AppErrorBoundary from "./AppErrorBoundary";
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const NAV_SECTIONS = getSidebarNavGroups(user);
+  const NAV_SECTIONS = useMemo(() => getSidebarNavGroups(user), [user]);
+  const navSectionIds = useMemo(() => NAV_SECTIONS.map((s) => s.id), [NAV_SECTIONS]);
+  const navSectionIdsKey = useMemo(() => navSectionIds.join("|"), [navSectionIds]);
+  const [openSections, setOpenSections] = useState(() => new Set(navSectionIds));
+
+  // When role changes / nav changes, keep all sections expanded by default.
+  useEffect(() => {
+    setOpenSections(new Set(navSectionIds));
+  }, [navSectionIdsKey, navSectionIds]);
 
   const doLogout = () => {
     logout();
@@ -51,9 +60,7 @@ export default function Layout() {
             {!collapsed && (
               <div className="flex flex-col leading-none">
                 <span className="font-display text-sm font-semibold tracking-tight text-foreground">OneTouch</span>
-                <span className="crt-num text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
-                  audit · ai
-                </span>
+                <span className="crt-num text-[9px] tracking-[0.08em] text-muted-foreground">Audit · AI</span>
               </div>
             )}
           </div>
@@ -73,9 +80,27 @@ export default function Layout() {
           {NAV_SECTIONS.map((sec) => (
             <div key={sec.id} className="mt-1">
               {!collapsed && sec.title ? (
-                <div className="crt-overline text-muted-foreground px-4 pb-1 pt-3">{sec.title}</div>
+                <button
+                  type="button"
+                  className="crt-overline flex w-full items-center justify-between text-muted-foreground px-4 pb-1 pt-3 hover:text-foreground transition-colors"
+                  onClick={() =>
+                    setOpenSections((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(sec.id)) next.delete(sec.id);
+                      else next.add(sec.id);
+                      return next;
+                    })
+                  }
+                  data-testid={`nav-section-toggle-${sec.id}`}
+                  aria-expanded={openSections.has(sec.id)}
+                >
+                  <span className="truncate text-left">{sec.title}</span>
+                  <span className="text-[10px] font-mono opacity-70">
+                    {openSections.has(sec.id) ? "▾" : "▸"}
+                  </span>
+                </button>
               ) : null}
-              {sec.items.map(({ to, label, icon: Icon }) => {
+              {(collapsed || openSections.has(sec.id) ? sec.items : []).map(({ to, label, icon: Icon }) => {
                 const base = typeof to === "string" ? to.split("?")[0] : to.pathname || "";
                 const testId = `nav-${sec.id}-${base.replace(/\//g, "-").replace(/^-/, "")}`;
                 return (
@@ -140,9 +165,11 @@ export default function Layout() {
         />
         <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-50 pt-12 dark:bg-zinc-950" data-testid="main-content">
           <Breadcrumbs />
-          <MastersFilterProvider>
-            <Outlet />
-          </MastersFilterProvider>
+          <AppErrorBoundary>
+            <MastersFilterProvider>
+              <Outlet />
+            </MastersFilterProvider>
+          </AppErrorBoundary>
         </div>
       </main>
     </div>

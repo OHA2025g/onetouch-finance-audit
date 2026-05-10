@@ -6,6 +6,8 @@ from typing import Any, Dict, Optional
 
 from fastapi import HTTPException
 
+from app.services.rbac_service import role_bypasses_entity_scope
+
 
 async def _security_config(db) -> Dict[str, Any]:
     doc = await db.system_security_config.find_one({"id": "singleton"}, {"_id": 0})
@@ -25,14 +27,17 @@ async def resolve_entity_code_for_query(
 ) -> Optional[str]:
     """Return the entity code to apply to list queries.
 
+    .. deprecated::
+        Prefer ``app.services.rbac_service.enforce_entity_scope`` for one consistent
+        implementation (uses ``users.id`` / ``user_id`` and matches Phase 40 RBAC).
+
     When enforcement is off, returns ``requested`` unchanged (may be ``None``).
     When on, non-``Super Admin`` users are limited to their profile ``entity``;
     requesting a different entity returns 403.
     """
     if not await entity_scope_enforced(db):
         return requested
-    role = current.get("role") or ""
-    if role == "Super Admin":
+    if role_bypasses_entity_scope(current):
         return requested
     prof = await db.users.find_one({"email": current["email"]}, {"_id": 0, "entity": 1})
     user_ent = (prof or {}).get("entity")

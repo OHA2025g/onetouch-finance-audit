@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/gl", tags=["gl"])
@@ -26,6 +27,7 @@ async def gl_accounts(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity_code"] = entity_code
@@ -43,6 +45,7 @@ async def gl_transactions(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code
@@ -71,6 +74,7 @@ async def gl_summary(
     period_ym: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     tx = await gl_transactions(entity_code=entity_code, period_ym=period_ym, limit=200, offset=0, current=current)
     items = tx.get("items") or []
     total_amount = 0.0
@@ -91,6 +95,7 @@ async def gl_anomalies(
     limit: int = Query(50, ge=1, le=500),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     # Use existing exceptions where control_code indicates GL signals; otherwise empty.
     q: Dict[str, Any] = {"process": "Finance"}
     if entity_code:
@@ -106,6 +111,7 @@ async def gl_movement_analysis(
     period_ym: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     # Minimal movement proxy: totals by day prefix from available txn list.
     tx = await gl_transactions(entity_code=entity_code, period_ym=period_ym, limit=500, offset=0, current=current)
     buckets: Dict[str, float] = {}
@@ -118,6 +124,7 @@ async def gl_movement_analysis(
 
 @router.get("/suspense-ageing")
 async def gl_suspense_ageing(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     # Placeholder until we have suspense account mapping; return stable contract.
     return {
         "as_of": as_of_now(),
@@ -130,6 +137,9 @@ async def gl_suspense_ageing(entity_code: Optional[str] = Query(None), current=D
 
 @router.post("/signoff")
 async def gl_signoff(body: Dict[str, Any], current=Depends(get_current_user)):
+    be = body.get("entity") or body.get("entity_code")
+    if be and str(be).strip():
+        await enforce_entity_scope(db, current=current, requested_entity_code=str(be))
     sid = f"glso-{__import__('uuid').uuid4().hex[:10]}"
     doc = {**body, "id": sid, "created_at": as_of_now(), "created_by": current.get("email")}
     await db.gl_signoffs.insert_one(dict(doc))

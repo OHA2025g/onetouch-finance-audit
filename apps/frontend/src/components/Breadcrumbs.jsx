@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { CaretRight, House } from "@phosphor-icons/react";
 import clsx from "clsx";
 import { labelForPath } from "../lib/routeConfig";
+import { toProperHeadingLabel } from "../lib/headingCase";
 
 /**
  * Builds cumulative path segments under `/app/*` for wayfinding.
@@ -35,7 +36,7 @@ export default function Breadcrumbs({ className }) {
     <nav
       aria-label="Breadcrumb"
       className={clsx(
-        "flex min-w-0 flex-wrap items-center gap-1 border-b border-zinc-200/80 px-4 py-2.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground dark:border-zinc-800/80 lg:px-8",
+        "flex min-w-0 flex-wrap items-center gap-1 border-b border-zinc-200/80 px-4 py-2.5 text-[11px] font-medium tracking-wide text-muted-foreground dark:border-zinc-800/80 lg:px-8",
         className
       )}
       data-testid="breadcrumbs"
@@ -49,10 +50,10 @@ export default function Breadcrumbs({ className }) {
               <span className="min-w-0 truncate text-foreground tabular-nums" aria-current="page">
                 {idx === 0 ? (
                   <span className="inline-flex items-center gap-1">
-                    <House size={12} className="inline" weight="regular" /> {c.label}
+                    <House size={12} className="inline" weight="regular" /> {toProperHeadingLabel(c.label)}
                   </span>
                 ) : (
-                  c.label
+                  toProperHeadingLabel(c.label)
                 )}
               </span>
             ) : (
@@ -62,10 +63,10 @@ export default function Breadcrumbs({ className }) {
               >
                 {idx === 0 ? (
                   <span className="inline-flex items-center gap-1">
-                    <House size={12} className="inline" weight="regular" /> {c.label}
+                    <House size={12} className="inline" weight="regular" /> {toProperHeadingLabel(c.label)}
                   </span>
                 ) : (
-                  c.label
+                  toProperHeadingLabel(c.label)
                 )}
               </Link>
             )}

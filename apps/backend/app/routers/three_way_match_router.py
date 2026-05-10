@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/three-way-match", tags=["three-way-match"])
@@ -100,6 +101,7 @@ async def set_tolerances(body: Dict[str, Any], current=Depends(get_current_user)
 
 @router.post("/run")
 async def run_three_way_match(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     tol = await _get_tolerances()
     inv_q: Dict[str, Any] = {"po_id": {"$ne": None}}
     if entity_code:
@@ -134,6 +136,7 @@ async def run_three_way_match(entity_code: Optional[str] = Query(None), current=
 
 @router.get("/summary")
 async def three_way_match_summary(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code
@@ -145,6 +148,7 @@ async def three_way_match_summary(entity_code: Optional[str] = Query(None), curr
 
 @router.get("/exceptions")
 async def three_way_match_exceptions(entity_code: Optional[str] = Query(None), limit: int = Query(100, ge=1, le=1000), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code
@@ -158,6 +162,8 @@ async def three_way_match_detail(exception_id: str, current=Depends(get_current_
     ex = await db.three_way_match_exceptions.find_one({"id": exception_id}, {"_id": 0})
     if not ex:
         raise HTTPException(404, "Three-way match exception not found")
+    if ex.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=ex.get("entity"))
     inv = await db.invoices.find_one({"id": ex.get("invoice_id")}, {"_id": 0})
     po = await db.purchase_orders.find_one({"id": ex.get("po_id")}, {"_id": 0})
     grn = await db.goods_receipts.find_one({"id": ex.get("grn_id")}, {"_id": 0})
@@ -169,6 +175,8 @@ async def three_way_match_create_case(exception_id: str, body: Dict[str, Any], c
     ex = await db.three_way_match_exceptions.find_one({"id": exception_id}, {"_id": 0})
     if not ex:
         raise HTTPException(404, "Three-way match exception not found")
+    if ex.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=ex.get("entity"))
 
     now = _now()
     cid = f"case-twm-{__import__('uuid').uuid4().hex[:10]}"

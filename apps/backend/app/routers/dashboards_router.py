@@ -10,6 +10,7 @@ from app.analytics import (cfo_cockpit, controller_dashboard, compliance_dashboa
                            audit_workspace, compute_readiness, working_capital_dashboard, treasury_dashboard, fpa_dashboard,
                            cash_conversion_dashboard)
 from app.services import master_data_service as mds
+from app.services.rbac_service import enforce_entity_scope
 from app.utils.timeutil import iso_utc
 
 router = APIRouter(tags=["dashboards"])
@@ -23,6 +24,7 @@ async def dashboard_cfo(
     cost_center_id: Optional[str] = Query(None, description="Optional cost center id on exceptions"),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await cfo_cockpit(
         db,
         entity_code=entity_code,
@@ -43,6 +45,7 @@ async def dashboard_risk_intelligence(
 ):
     """Phase 38 — One round-trip for Risk intelligence hub: CFO cockpit payload plus master risk scores.
     Phase 40 — Same allowlist as other dashboards (incl. External Auditor) for nav parity with /insights/risk."""
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     cockpit = await cfo_cockpit(
         db,
         entity_code=entity_code,
@@ -64,6 +67,7 @@ async def dashboard_controller(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await controller_dashboard(
         db,
         entity_code=entity_code,
@@ -96,6 +100,7 @@ async def dashboard_audit(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await audit_workspace(
         db,
         entity_code=entity_code,
@@ -113,6 +118,7 @@ async def dashboard_compliance(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await compliance_dashboard(
         db,
         entity_code=entity_code,
@@ -130,6 +136,7 @@ async def dashboard_working_capital(
     cost_center_id: Optional[str] = Query(None, description="Applied to exception-derived metrics only (for now)"),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await working_capital_dashboard(
         db,
         entity_code=entity_code,
@@ -147,6 +154,7 @@ async def dashboard_treasury(
     cost_center_id: Optional[str] = Query(None, description="Applied to exception-derived metrics only (for now)"),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await treasury_dashboard(
         db,
         entity_code=entity_code,
@@ -164,6 +172,7 @@ async def dashboard_fpa(
     cost_center_id: Optional[str] = Query(None, description="Applied to exception-derived metrics only (for now)"),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await fpa_dashboard(
         db,
         entity_code=entity_code,
@@ -181,6 +190,7 @@ async def dashboard_cash_conversion(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await cash_conversion_dashboard(
         db,
         entity_code=entity_code,
@@ -200,6 +210,7 @@ async def dashboard_my_cases(
 ):
     from app.services.case_service import merge_cases_master_filters
 
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q = merge_cases_master_filters(
         {"owner_email": current["email"]},
         entity_code=entity_code,
@@ -238,6 +249,7 @@ async def readiness(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     rows = await compute_readiness(
         db,
         entity_code=entity_code,

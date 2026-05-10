@@ -4,7 +4,7 @@ import { http } from "../lib/api";
 import { toast } from "sonner";
 import { fmtUSD } from "../lib/format";
 import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import InsightPanel from "../components/InsightPanel";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
@@ -22,23 +22,43 @@ export default function ProcessReadinessPage() {
   const nav = useNavigate();
   const [sp] = useSearchParams();
   const processLens = (sp.get("process") || "").trim();
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId, hrefWithMasterParams } = useMastersFilters();
+  const { hrefWithMasterParams } = useMastersFilters();
+  const dashboardParams = useDashboardFilterParams();
+  const complianceDepthParams = useMemo(() => {
+    const ec = dashboardParams.entity_code;
+    return ec ? { entity_code: ec } : {};
+  }, [dashboardParams.entity_code]);
+  const [govDepth, setGovDepth] = useState(null);
 
   useEffect(() => {
-    const params = buildDashboardFilterParams({
-      entityCode,
-      periodYm,
-      periodExplicit,
-      departmentId,
-      costCenterId,
-    });
     http
-      .get("/readiness", { params })
+      .get("/readiness", { params: dashboardParams })
       .then((r) => setPayload(r.data))
       .catch(() => toast.error("Failed to load readiness matrix"));
-  }, [entityCode, periodYm, periodExplicit, departmentId, costCenterId]);
+  }, [dashboardParams]);
 
-  const rows = payload?.rows ?? [];
+  useEffect(() => {
+    let cancelled = false;
+    const paths = ["/compliance-depth/rpt/register", "/compliance-depth/doa/rules", "/compliance-depth/sod/campaigns", "/compliance-depth/mdq/summary"];
+    Promise.all(paths.map((p) => http.get(p, { params: complianceDepthParams })))
+      .then(([rpt, doa, sod, mdq]) => {
+        if (cancelled) return;
+        setGovDepth({
+          rpt: rpt.data,
+          doa: doa.data,
+          sod: sod.data,
+          mdq: mdq.data,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setGovDepth(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [complianceDepthParams]);
+
+  const rows = useMemo(() => payload?.rows ?? [], [payload]);
   const applied = payload?.filters_applied ?? {};
 
   const displayRows = useMemo(() => {
@@ -104,6 +124,41 @@ export default function ProcessReadinessPage() {
         ) : null}
 
         <InsightPanel section="cfo" title="Readiness context · AI Insights" />
+
+        {govDepth ? (
+          <SectionCard
+            kicker="GOVERNANCE DEPTH · WAVE 3"
+            title="Compliance stubs — GET /compliance-depth/* with optional entity_code (Phase 40)"
+            bodyClassName="p-0"
+            className="mb-6"
+          >
+            <DataTable className="rounded-none border-0 bg-transparent" maxHeightClassName="max-h-[220px]" testId="readiness-gov-depth-table">
+              <DataTableHead>
+                <tr>
+                  <DataTableTh>Surface</DataTableTh>
+                  <DataTableTh>Entity echoed</DataTableTh>
+                  <DataTableTh>Note</DataTableTh>
+                </tr>
+              </DataTableHead>
+              <DataTableBody>
+                {[
+                  { key: "rpt", label: "RPT register", row: govDepth.rpt },
+                  { key: "doa", label: "DOA rules", row: govDepth.doa },
+                  { key: "sod", label: "SoD campaigns", row: govDepth.sod },
+                  { key: "mdq", label: "MDQ summary", row: govDepth.mdq },
+                ].map(({ key, label, row }) => (
+                  <DataTableRow key={key} testId={`readiness-gov-depth-${key}`}>
+                    <DataTableTd className="crt-num text-xs text-muted-foreground">{label}</DataTableTd>
+                    <DataTableTd className="crt-num text-xs">{row?.entity_code ?? "—"}</DataTableTd>
+                    <DataTableTd className="text-xs text-muted-foreground max-w-[480px] truncate" title={row?.note}>
+                      {row?.note || "—"}
+                    </DataTableTd>
+                  </DataTableRow>
+                ))}
+              </DataTableBody>
+            </DataTable>
+          </SectionCard>
+        ) : null}
 
         <SectionCard
           kicker="MATRIX"

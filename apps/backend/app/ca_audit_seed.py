@@ -14,6 +14,33 @@ def _now() -> str:
     return iso(datetime.now(timezone.utc))
 
 
+# Stable legal-entity keys for demo engagements (RBAC ``assert_engagement_entity_scope``).
+_DEMO_ENGAGEMENT_ENTITY_CODES: Dict[str, str] = {
+    "ENG-DEMO-IN-2025": "IN-SVC",
+    "ENG-GST-PLANNING-DEMO": "UK-OPS",
+}
+
+
+async def repair_demo_audit_engagement_entity_codes(db) -> Dict[str, Any]:
+    """Backfill ``entity_code`` on known CA demo rows when missing (legacy DBs pre–entity RBAC)."""
+    touched: list[str] = []
+    for eid, code in _DEMO_ENGAGEMENT_ENTITY_CODES.items():
+        res = await db.audit_engagements.update_one(
+            {
+                "engagement_id": eid,
+                "$or": [
+                    {"entity_code": {"$exists": False}},
+                    {"entity_code": None},
+                    {"entity_code": ""},
+                ],
+            },
+            {"$set": {"entity_code": code, "updated_at": _now()}},
+        )
+        if res.modified_count:
+            touched.append(eid)
+    return {"status": "repaired", "engagement_ids": touched} if touched else {"status": "noop"}
+
+
 async def seed_ca_audit_if_empty(db) -> Dict[str, Any]:
     """Idempotent: only inserts when audit_engagements is empty."""
     if await db.audit_engagements.count_documents({}) > 0:
@@ -28,6 +55,7 @@ async def seed_ca_audit_if_empty(db) -> Dict[str, Any]:
     eng_doc: Dict[str, Any] = {
         "id": str(uuid.uuid4()),
         "engagement_id": eid,
+        "entity_code": "IN-SVC",
         "entity_name": "OneTouch India Services Pvt Ltd",
         "financial_year": "2024-25",
         "audit_type": "statutory",
@@ -62,6 +90,7 @@ async def seed_ca_audit_if_empty(db) -> Dict[str, Any]:
     eng2: Dict[str, Any] = {
         "id": str(uuid.uuid4()),
         "engagement_id": eid2,
+        "entity_code": "UK-OPS",
         "entity_name": "Demo Logistics LLP",
         "financial_year": "2025-26",
         "audit_type": "GST",

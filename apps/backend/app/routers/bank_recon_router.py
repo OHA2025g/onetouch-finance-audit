@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/bank-recon", tags=["bank-recon"])
@@ -25,17 +26,23 @@ async def upload_statement(body: Dict[str, Any], current=Depends(get_current_use
     body: { entity, bank_account_id?, statement_period?, items: [{date, amount, direction?, reference?}] }
     """
     sid = f"bst-{__import__('uuid').uuid4().hex[:10]}"
+    ent_resolved = await enforce_entity_scope(
+        db, current=current, requested_entity_code=(body.get("entity") or body.get("entity_code"))
+    )
+    payload = dict(body)
+    if ent_resolved:
+        payload["entity"] = ent_resolved
     doc = {
-        **body,
+        **payload,
         "id": sid,
         "status": "uploaded",
         "created_at": _now(),
         "created_by": current.get("email"),
         "matched_count": 0,
-        "unmatched_count": len(body.get("items") or []),
+        "unmatched_count": len(payload.get("items") or []),
     }
     await db.bank_recon_statements.insert_one(dict(doc))
-    await audit_log(current["email"], "bank_statement_upload", "bank_recon_statement", sid, {"entity": body.get("entity")})
+    await audit_log(current["email"], "bank_statement_upload", "bank_recon_statement", sid, {"entity": doc.get("entity")})
     return {"status": "ok", "statement_id": sid, "as_of": _now()}
 
 
@@ -45,6 +52,7 @@ async def list_statements(
     limit: int = Query(50, ge=1, le=500),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code
@@ -58,6 +66,8 @@ async def auto_match(statement_id: str, current=Depends(get_current_user)):
     st = await db.bank_recon_statements.find_one({"id": statement_id}, {"_id": 0})
     if not st:
         raise HTTPException(404, "Statement not found")
+    if st.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=st.get("entity"))
 
     items = st.get("items") or []
     # Simple placeholder: treat items with reference prefix "WIRE-" as matched.
@@ -77,6 +87,8 @@ async def unmatched_items(statement_id: str, current=Depends(get_current_user)):
     st = await db.bank_recon_statements.find_one({"id": statement_id}, {"_id": 0})
     if not st:
         raise HTTPException(404, "Statement not found")
+    if st.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=st.get("entity"))
     items = st.get("items") or []
     out = [i for i in items if not str(i.get("reference") or "").startswith("WIRE-")]
     return {"items": out, "count": len(out), "as_of": _now()}
@@ -88,6 +100,9 @@ async def classify_unmatched(statement_id: str, body: Dict[str, Any], current=De
 
     body: { items: [{reference, classification, notes?}] }
     """
+    st0 = await db.bank_recon_statements.find_one({"id": statement_id}, {"_id": 0, "entity": 1})
+    if st0 and st0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=st0.get("entity"))
     cid = f"cls-{__import__('uuid').uuid4().hex[:10]}"
     doc = {**body, "id": cid, "statement_id": statement_id, "created_at": _now(), "created_by": current.get("email")}
     await db.bank_recon_classifications.insert_one(dict(doc))
@@ -97,6 +112,17 @@ async def classify_unmatched(statement_id: str, body: Dict[str, Any], current=De
 
 @router.post("/{statement_id}/signoff")
 async def signoff(statement_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    st0 = await db.bank_recon_statements.find_one({"id": statement_id}, {"_id": 0})
+    if not st0:
+        raise HTTPException(404, "Statement not found")
+    if st0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=st0.get("entity"))
+    unmatched = int(st0.get("unmatched_count") or 0)
+    if unmatched > 0 and not bool(body.get("acknowledge_residual_exceptions")):
+        raise HTTPException(
+            409,
+            "Statement still has unmatched lines; classify them or pass acknowledge_residual_exceptions with a documented waiver.",
+        )
     sid = f"bso-{__import__('uuid').uuid4().hex[:10]}"
     doc = {**body, "id": sid, "statement_id": statement_id, "created_at": _now(), "created_by": current.get("email")}
     await db.bank_recon_signoffs.insert_one(dict(doc))

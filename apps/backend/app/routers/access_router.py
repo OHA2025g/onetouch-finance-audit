@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/access", tags=["access"])
@@ -105,6 +106,7 @@ async def _compute_sod_conflicts(entity_code: Optional[str] = None) -> List[Dict
 
 @router.get("/users")
 async def access_users(entity_code: Optional[str] = Query(None), q: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=5000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_access(entity_code=entity_code)
     filt: Dict[str, Any] = {}
     if entity_code:
@@ -151,6 +153,7 @@ async def access_sod_rule_create(body: Dict[str, Any], current=Depends(get_curre
 
 @router.get("/sod-conflicts")
 async def access_sod_conflicts(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_access(entity_code=entity_code)
     items = await _compute_sod_conflicts(entity_code=entity_code)
     return {"items": items, "count": len(items), "as_of": as_of_now(), "entity_code": entity_code}
@@ -158,6 +161,7 @@ async def access_sod_conflicts(entity_code: Optional[str] = Query(None), current
 
 @router.get("/dormant-users")
 async def access_dormant_users(entity_code: Optional[str] = Query(None), dormant_days: int = Query(90, ge=1, le=3650), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_access(entity_code=entity_code)
     q: Dict[str, Any] = {"entity": entity_code} if entity_code else {}
     now = datetime.now(timezone.utc)
@@ -178,6 +182,7 @@ async def access_dormant_users(entity_code: Optional[str] = Query(None), dormant
 
 @router.get("/privileged-users")
 async def access_privileged_users(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_access(entity_code=entity_code)
     q: Dict[str, Any] = {"entity": entity_code} if entity_code else {}
     users = [u async for u in db.access_users.find(q, {"_id": 0}).limit(5000)]
@@ -187,9 +192,15 @@ async def access_privileged_users(entity_code: Optional[str] = Query(None), curr
 
 @router.post("/certification-campaign")
 async def access_certification_campaign(body: Dict[str, Any], current=Depends(get_current_user)):
-    await _ensure_seed_access(entity_code=body.get("entity"))
+    entity = await enforce_entity_scope(
+        db,
+        current=current,
+        requested_entity_code=(body.get("entity") or body.get("entity_code")),
+    )
+    if not entity:
+        entity = str(body.get("entity") or body.get("entity_code") or "US-HQ")
+    await _ensure_seed_access(entity_code=entity)
     cid = f"CERT-{__import__('uuid').uuid4().hex[:10]}"
-    entity = body.get("entity") or "US-HQ"
     due_date = body.get("due_date") or (datetime.now(timezone.utc) + timedelta(days=14)).date().isoformat()
     campaign = {"id": cid, "entity": entity, "scope": body.get("scope") or "all_users", "status": "active", "due_date": due_date, "created_at": as_of_now(), "created_by": current.get("email")}
     await db.access_certification_campaigns.insert_one(dict(campaign))
@@ -221,6 +232,9 @@ async def access_certification_campaign(body: Dict[str, Any], current=Depends(ge
 
 @router.post("/certification-item/{item_id}/decision")
 async def access_certification_item_decision(item_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    row = await db.access_certification_items.find_one({"id": item_id}, {"_id": 0, "entity": 1})
+    if row and row.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=row.get("entity"))
     decision = str(body.get("decision") or "")
     if decision not in {"approve", "revoke", "modify"}:
         raise HTTPException(400, "Invalid decision (approve|revoke|modify)")

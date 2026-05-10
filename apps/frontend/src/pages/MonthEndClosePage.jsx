@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
 import { StatCard } from "../components/StatCard";
 import { useAuth } from "../lib/auth";
@@ -14,7 +14,7 @@ export default function MonthEndClosePage() {
   const { cycleId } = useParams();
   const nav = useNavigate();
   const { user } = useAuth();
-  const { hrefWithMasterParams, entityCode, periodYm, periodExplicit, departmentId, costCenterId } = useMastersFilters();
+  const { hrefWithMasterParams, periodYm } = useMastersFilters();
   const [cycles, setCycles] = useState([]);
   const [cycle, setCycle] = useState(null);
   const [creating, setCreating] = useState(false);
@@ -25,17 +25,7 @@ export default function MonthEndClosePage() {
 
   const canSignOff = ["CFO", "Super Admin"].includes(user?.role);
 
-  const scopeParams = useMemo(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId],
-  );
+  const scopeParams = useDashboardFilterParams();
 
   const loadCycles = () =>
     http

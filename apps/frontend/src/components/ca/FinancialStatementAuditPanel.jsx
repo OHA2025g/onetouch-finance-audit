@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { http } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { ArrowSquareOut, FileArrowUp } from "@phosphor-icons/react";
 import {
   Bar,
@@ -57,6 +58,7 @@ function formatMoney(n) {
 
 export default function FinancialStatementAuditPanel({ engagementId, compact = false }) {
   const eid = engagementId;
+  const dashboardParams = useDashboardFilterParams();
   const [view, setView] = useState("upload");
   const [tbData, setTbData] = useState(null);
   const [fsSnap, setFsSnap] = useState(null);
@@ -73,14 +75,15 @@ export default function FinancialStatementAuditPanel({ engagementId, compact = f
   const loadFsBundle = useCallback(async () => {
     if (!eid) return;
     try {
+      const qp = { params: dashboardParams };
       const [tbRes, fsRes, matRes, bsRes, plRes, cfRes, adjRes] = await Promise.all([
-        http.get(`/audit-engagements/${encodeURIComponent(eid)}/trial-balance`),
-        http.get(`/audit-engagements/${encodeURIComponent(eid)}/financial-statements/latest`).catch(() => ({ data: {} })),
-        http.get(`/audit-engagements/${encodeURIComponent(eid)}/materiality`).catch(() => ({ data: null })),
-        http.get(`/audit-engagements/${encodeURIComponent(eid)}/balance-sheet`).catch(() => ({ data: {} })),
-        http.get(`/audit-engagements/${encodeURIComponent(eid)}/profit-loss`).catch(() => ({ data: {} })),
-        http.get(`/audit-engagements/${encodeURIComponent(eid)}/cash-flow`).catch(() => ({ data: {} })),
-        http.get(`/audit-engagements/${encodeURIComponent(eid)}/audit-adjustments`).catch(() => ({ data: { items: [] } })),
+        http.get(`/audit-engagements/${encodeURIComponent(eid)}/trial-balance`, qp),
+        http.get(`/audit-engagements/${encodeURIComponent(eid)}/financial-statements/latest`, qp).catch(() => ({ data: {} })),
+        http.get(`/audit-engagements/${encodeURIComponent(eid)}/materiality`, qp).catch(() => ({ data: null })),
+        http.get(`/audit-engagements/${encodeURIComponent(eid)}/balance-sheet`, qp).catch(() => ({ data: {} })),
+        http.get(`/audit-engagements/${encodeURIComponent(eid)}/profit-loss`, qp).catch(() => ({ data: {} })),
+        http.get(`/audit-engagements/${encodeURIComponent(eid)}/cash-flow`, qp).catch(() => ({ data: {} })),
+        http.get(`/audit-engagements/${encodeURIComponent(eid)}/audit-adjustments`, qp).catch(() => ({ data: { items: [] } })),
       ]);
       setTbData(tbRes.data || null);
       setFsSnap(fsRes.data?.snapshot || null);
@@ -92,7 +95,7 @@ export default function FinancialStatementAuditPanel({ engagementId, compact = f
     } catch {
       toast.error("Failed to load FS data");
     }
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,7 +110,11 @@ export default function FinancialStatementAuditPanel({ engagementId, compact = f
 
   const genFs = async () => {
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/fs/generate`, { mapping_profile: "default_ind_as" });
+      await http.post(
+        `/audit-engagements/${encodeURIComponent(eid)}/fs/generate`,
+        { mapping_profile: "default_ind_as" },
+        { params: dashboardParams },
+      );
       toast.success("Financial statements generated");
       await loadFsBundle();
     } catch {
@@ -123,10 +130,9 @@ export default function FinancialStatementAuditPanel({ engagementId, compact = f
     setDrillRow({ account_code: accountCode, account_name: label });
     setDrillLoading(true);
     try {
-      const { data } = await http.get(
-        `/audit-engagements/${encodeURIComponent(eid)}/fs/drilldown`,
-        { params: { account_code: accountCode } },
-      );
+      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/fs/drilldown`, {
+        params: { ...dashboardParams, account_code: accountCode },
+      });
       setDrillRow(data);
     } catch {
       toast.error("Drilldown failed");
@@ -152,10 +158,10 @@ export default function FinancialStatementAuditPanel({ engagementId, compact = f
       return;
     }
     try {
-      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/audit-adjustments`, body);
+      await http.post(`/audit-engagements/${encodeURIComponent(eid)}/audit-adjustments`, body, { params: dashboardParams });
       toast.success("Adjustment proposed");
       ev.target.reset();
-      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/audit-adjustments`);
+      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/audit-adjustments`, { params: dashboardParams });
       setAdjustments(data?.items || []);
     } catch {
       toast.error("Could not save adjustment");
@@ -164,9 +170,9 @@ export default function FinancialStatementAuditPanel({ engagementId, compact = f
 
   const patchAdjStatus = async (id, status) => {
     try {
-      await http.put(`/audit-adjustments/${encodeURIComponent(id)}`, { status });
+      await http.put(`/audit-adjustments/${encodeURIComponent(id)}`, { status }, { params: dashboardParams });
       toast.success(`Status: ${status}`);
-      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/audit-adjustments`);
+      const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/audit-adjustments`, { params: dashboardParams });
       setAdjustments(data?.items || []);
     } catch {
       toast.error("Update failed");
@@ -249,7 +255,7 @@ export default function FinancialStatementAuditPanel({ engagementId, compact = f
                 body.append("file", f);
                 try {
                   await http.post(`/audit-engagements/${encodeURIComponent(eid)}/trial-balance/upload`, body, {
-                    headers: { "Content-Type": "multipart/form-data" },
+                    params: dashboardParams,
                   });
                   toast.success("Trial balance uploaded");
                   await loadFsBundle();

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/fixed-assets-audit", tags=["fixed-assets-audit"])
@@ -124,6 +125,7 @@ async def _ensure_seed_assets(entity_code: Optional[str] = None) -> Dict[str, in
 
 @router.get("/summary")
 async def fa_summary(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_assets(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -145,6 +147,7 @@ async def fa_summary(entity_code: Optional[str] = Query(None), current=Depends(g
 
 @router.get("/assets")
 async def fa_assets(entity_code: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=2000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_assets(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -157,6 +160,7 @@ async def fa_assets(entity_code: Optional[str] = Query(None), limit: int = Query
 
 @router.get("/depreciation-exceptions")
 async def fa_depreciation_exceptions(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_assets(entity_code=entity_code)
     now = datetime.now(timezone.utc)
     current_period = now.replace(day=1).strftime("%Y-%m")
@@ -184,12 +188,14 @@ async def fa_depreciation_exceptions(entity_code: Optional[str] = Query(None), c
 
 @router.get("/cwip-ageing")
 async def fa_cwip_ageing(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     # Not modeled explicitly; surface stable placeholder.
     return {"as_of": _now(), "entity_code": entity_code, "items": [], "count": 0, "note": "Seed CWIP register to compute CWIP ageing."}
 
 
 @router.get("/capex-overrun")
 async def fa_capex_overrun(entity_code: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=500), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_assets(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -207,6 +213,7 @@ async def fa_capex_overrun(entity_code: Optional[str] = Query(None), limit: int 
 
 @router.get("/disposals")
 async def fa_disposals(entity_code: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=500), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_assets(entity_code=entity_code)
     q: Dict[str, Any] = {"status": "disposed"}
     if entity_code:
@@ -227,7 +234,11 @@ async def fa_create_case(asset_or_project_id: str, body: Dict[str, Any], current
     now = _now()
     cid = f"case-fa-{__import__('uuid').uuid4().hex[:10]}"
     ex_id = f"fa-{asset_or_project_id}"
-    entity = (asset or proj).get("entity") or current.get("entity") or "US-HQ"
+    entity = await enforce_entity_scope(
+        db,
+        current=current,
+        requested_entity_code=str((asset or proj).get("entity") or current.get("entity") or "US-HQ"),
+    )
     exposure = float(body.get("financial_exposure") or (proj.get("actual_amount") if proj else asset.get("cost")) or 0.0)
 
     ex_doc = {

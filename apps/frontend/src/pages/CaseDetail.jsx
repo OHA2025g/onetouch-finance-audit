@@ -6,6 +6,7 @@ import { exceptionSourceDrillPath } from "../lib/drillPaths";
 import { SeverityBadge, StatusBadge, PriorityTag } from "../components/Badges";
 import { fmtUSD, fmtDate, fmtDateTime } from "../lib/format";
 import { toast } from "sonner";
+import { errorMessageFromAxios } from "../lib/apiErrorMessage";
 import { CaretLeft, Graph, PaperPlaneRight, CheckCircle, User } from "@phosphor-icons/react";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 
@@ -16,14 +17,29 @@ export default function CaseDetail() {
   const { caseId } = useParams();
   const nav = useNavigate();
   const [d, setD] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [comment, setComment] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
-    const { data } = await http.get(`/cases/${caseId}`);
-    setD(data);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const { data } = await http.get(`/cases/${caseId}`);
+      setD(data);
+    } catch (e) {
+      const msg = errorMessageFromAxios(e, "Failed to load case");
+      setLoadError(msg);
+      toast.error(msg);
+      setD(null);
+    } finally {
+      setLoading(false);
+    }
   };
-  useEffect(() => { load(); }, [caseId]); // eslint-disable-line
+  useEffect(() => {
+    load();
+  }, [caseId]); // eslint-disable-line
 
   const updateCase = async (patch) => {
     setSaving(true);
@@ -31,7 +47,9 @@ export default function CaseDetail() {
       await http.patch(`/cases/${caseId}`, patch);
       toast.success("Case updated");
       await load();
-    } catch { toast.error("Update failed"); }
+    } catch (e) {
+      toast.error(errorMessageFromAxios(e, "Update failed"));
+    }
     setSaving(false);
   };
 
@@ -41,10 +59,28 @@ export default function CaseDetail() {
       await http.post(`/cases/${caseId}/comments`, { comment });
       setComment("");
       await load();
-    } catch { toast.error("Comment failed"); }
+    } catch (e) {
+      toast.error(errorMessageFromAxios(e, "Comment failed"));
+    }
   };
 
-  if (!d) return <div className="p-8 font-mono text-xs uppercase text-muted-foreground">Loading case…</div>;
+  if (loading) {
+    return <div className="p-8 font-mono text-xs uppercase text-muted-foreground">Loading case…</div>;
+  }
+  if (loadError || !d) {
+    return (
+      <div className="p-8 max-w-lg space-y-4" data-testid="case-detail-error">
+        <div className="text-sm text-[hsl(var(--destructive))]">{loadError || "Case not found."}</div>
+        <button
+          type="button"
+          onClick={() => load()}
+          className="crt-num rounded-sm border border-zinc-200 bg-zinc-50 px-3 py-2 text-[10px] uppercase tracking-wider hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   const c = d.case;
   const ex = d.exception;

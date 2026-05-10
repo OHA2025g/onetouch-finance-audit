@@ -3,10 +3,12 @@ import { useSearchParams, Link } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 const DEMO = "ENG-DEMO-IN-2025";
 
 export default function CfoAuditCommitteeDashboard() {
+  const dashboardParams = useDashboardFilterParams();
   const [params, setParams] = useSearchParams();
   const eid = params.get("engagement_id") || DEMO;
   const [engagements, setEngagements] = useState([]);
@@ -18,13 +20,13 @@ export default function CfoAuditCommitteeDashboard() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await http.get("/audit-engagements");
+        const { data } = await http.get("/audit-engagements", { params: dashboardParams });
         setEngagements(Array.isArray(data) ? data : []);
       } catch {
         setListErr(true);
       }
     })();
-  }, []);
+  }, [dashboardParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,8 +34,8 @@ export default function CfoAuditCommitteeDashboard() {
       setLoading(true);
       try {
         const [a, b] = await Promise.all([
-          http.get(`/audit-engagements/${encodeURIComponent(eid)}/executive-summary`),
-          http.get(`/audit-engagements/${encodeURIComponent(eid)}/audit-committee-pack`),
+          http.get(`/audit-engagements/${encodeURIComponent(eid)}/executive-summary`, { params: dashboardParams }),
+          http.get(`/audit-engagements/${encodeURIComponent(eid)}/audit-committee-pack`, { params: dashboardParams }),
         ]);
         if (!cancelled) {
           setExec(a.data);
@@ -50,7 +52,7 @@ export default function CfoAuditCommitteeDashboard() {
       }
     })();
     return () => { cancelled = true; };
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   return (
     <PageShell maxWidth="max-w-[1200px]">

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowsClockwise, ArrowRight } from "@phosphor-icons/react";
 import { toast } from "sonner";
@@ -6,7 +6,7 @@ import { http } from "../lib/api";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 const STATUS_OPTIONS = [
   { value: "", label: "All statuses" },
@@ -18,25 +18,14 @@ const STATUS_OPTIONS = [
 
 export default function CfoActionQueuePage() {
   const nav = useNavigate();
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId, hrefWithMasterParams } = useMastersFilters();
+  const { entityCode, hrefWithMasterParams } = useMastersFilters();
   const [queue, setQueue] = useState(null);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [status, setStatus] = useState("");
 
-  const dashboardParams = useMemo(
-    () =>
-      buildDashboardFilterParams({
-        entityCode,
-        periodYm,
-        periodExplicit,
-        departmentId,
-        costCenterId,
-      }),
-    [entityCode, periodYm, periodExplicit, departmentId, costCenterId],
-  );
-
+  const dashboardParams = useDashboardFilterParams();
   const loadList = useCallback(
     async (opts = { refresh: false }) => {
       const { refresh } = opts;

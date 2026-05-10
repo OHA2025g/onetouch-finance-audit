@@ -2,19 +2,21 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { http, API } from "../../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../../lib/useDashboardFilterParams";
 import { SectionCard } from "../../components/PageShell";
 
 const STATUSES = ["draft", "partner review", "management response", "final issued"];
 
 export default function FinalReportPreviewPage() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const [report, setReport] = useState(null);
 
   const load = useCallback(async () => {
-    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/report`);
+    const { data } = await http.get(`/audit-engagements/${encodeURIComponent(eid)}/report`, { params: dashboardParams });
     setReport(data);
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     load().catch(() => setReport(null));
@@ -22,7 +24,7 @@ export default function FinalReportPreviewPage() {
 
   const gen = async () => {
     try {
-      const { data } = await http.post(`/audit-engagements/${encodeURIComponent(eid)}/report/generate`);
+      const { data } = await http.post(`/audit-engagements/${encodeURIComponent(eid)}/report/generate`, {}, { params: dashboardParams });
       setReport(data);
       toast.success("Report draft generated");
     } catch {
@@ -32,7 +34,7 @@ export default function FinalReportPreviewPage() {
 
   const setStatus = async (status) => {
     try {
-      const { data } = await http.patch(`/audit-engagements/${encodeURIComponent(eid)}/report/status`, { status });
+      const { data } = await http.patch(`/audit-engagements/${encodeURIComponent(eid)}/report/status`, { status }, { params: dashboardParams });
       setReport(data);
       toast.success("Status updated");
     } catch {
@@ -42,7 +44,8 @@ export default function FinalReportPreviewPage() {
 
   const exportBlob = (format, filename) => {
     const token = localStorage.getItem("ota_token");
-    const url = `${API}/audit-engagements/${encodeURIComponent(eid)}/report/export?format=${encodeURIComponent(format)}`;
+    const q = new URLSearchParams({ ...dashboardParams, format });
+    const url = `${API}/audit-engagements/${encodeURIComponent(eid)}/report/export?${q}`;
     fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then((r) => {
         if (!r.ok) throw new Error();

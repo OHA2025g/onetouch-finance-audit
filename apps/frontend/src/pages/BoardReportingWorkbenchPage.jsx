@@ -1,20 +1,23 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { StatCard } from "../components/StatCard";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
 
 export default function BoardReportingWorkbenchPage() {
+  const dashboardParams = useDashboardFilterParams();
   const [d, setD] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     try {
+      const verParams = { limit: 50, ...dashboardParams };
       const [tplRes, verRes] = await Promise.all([
-        http.get("/reports/templates"),
-        http.get("/reports/versions", { params: { limit: 50 } }),
+        http.get("/reports/templates", { params: dashboardParams }),
+        http.get("/reports/versions", { params: verParams }),
       ]);
       const items = tplRes.data?.items || [];
       const exportFormats = tplRes.data?.export_formats || [];
@@ -27,15 +30,16 @@ export default function BoardReportingWorkbenchPage() {
         templates: items.slice(0, 30),
         versions: verItems.slice(0, 30),
         note: tplRes.data?.note || "",
+        entityEcho: tplRes.data?.entity_code ?? verRes.data?.entity_code ?? null,
       });
     } catch {
       toast.error("Failed to load board reporting workbench");
     }
-  };
+  }, [dashboardParams]);
 
   useEffect(() => {
     refresh();
-  }, []);
+  }, [refresh]);
 
   const generateDemo = async () => {
     setBusy(true);
@@ -43,7 +47,7 @@ export default function BoardReportingWorkbenchPage() {
       const g = await http.post("/reports/generate", {
         template_id: "tpl-audit-committee-pack",
         format: "pdf",
-        filters: { entity_code: "US-HQ" },
+        filters: { ...dashboardParams },
       });
       const rid = g.data?.id;
       if (rid) {
@@ -98,6 +102,12 @@ export default function BoardReportingWorkbenchPage() {
         {d.note ? (
           <p className="crt-num text-xs text-muted-foreground mb-6 px-1" data-testid="br39-api-note">
             {d.note}
+          </p>
+        ) : null}
+
+        {d.entityEcho ? (
+          <p className="crt-num text-xs text-muted-foreground mb-6 px-1" data-testid="br39-entity-echo">
+            API entity echo: <span className="text-foreground">{d.entityEcho}</span>
           </p>
         ) : null}
 

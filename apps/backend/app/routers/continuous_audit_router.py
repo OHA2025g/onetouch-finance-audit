@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/continuous-audit", tags=["continuous-audit"])
@@ -79,6 +80,7 @@ async def _ensure_seed_rules(entity_code: Optional[str] = None) -> Dict[str, int
 
 @router.get("/rules")
 async def ca_rules(entity_code: Optional[str] = Query(None), status: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=5000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_rules(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -91,12 +93,44 @@ async def ca_rules(entity_code: Optional[str] = Query(None), status: Optional[st
     return {"items": items, "total": total, "limit": limit, "offset": offset, "as_of": _now()}
 
 
+@router.get("/runs")
+async def ca_runs_list(
+    entity_code: Optional[str] = Query(None),
+    rule_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    current=Depends(get_current_user),
+):
+    """Recent rule runs for scheduler / ops visibility (failure modes surface via status + duration)."""
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    q: Dict[str, Any] = {}
+    if entity_code:
+        q["entity"] = entity_code
+    if rule_id:
+        q["rule_id"] = rule_id
+    cur = db.continuous_audit_rule_runs.find(q, {"_id": 0}).sort("started_at", -1).skip(offset).limit(limit)
+    rows = [x async for x in cur]
+    total = await db.continuous_audit_rule_runs.count_documents(q)
+    failed = sum(1 for x in rows if (x.get("status") or "").lower() == "failed")
+    return {
+        "items": rows,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "failed_in_page": failed,
+        "as_of": _now(),
+    }
+
+
 @router.post("/rules")
 async def ca_rules_create(body: Dict[str, Any], current=Depends(get_current_user)):
     rid = f"CAR-{__import__('uuid').uuid4().hex[:8]}"
+    ent = await enforce_entity_scope(
+        db, current=current, requested_entity_code=(body.get("entity") or body.get("entity_code"))
+    )
     doc = {
         "id": rid,
-        "entity": body.get("entity") or "US-HQ",
+        "entity": ent or body.get("entity") or "US-HQ",
         "name": body.get("name") or "Continuous audit rule",
         "description": body.get("description") or "",
         "status": body.get("status") or "draft",
@@ -114,6 +148,9 @@ async def ca_rules_create(body: Dict[str, Any], current=Depends(get_current_user
 
 @router.patch("/rules/{rule_id}")
 async def ca_rules_update(rule_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    r0 = await db.continuous_audit_rules.find_one({"id": rule_id}, {"_id": 0, "entity": 1})
+    if r0 and r0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=r0.get("entity"))
     update = {k: v for k, v in body.items() if k in {"name", "description", "status", "severity", "config"}}
     update["updated_at"] = _now()
     update["updated_by"] = current.get("email")
@@ -233,6 +270,8 @@ async def ca_run(rule_id: str, body: Dict[str, Any] | None = None, current=Depen
     rule = await db.continuous_audit_rules.find_one({"id": rule_id}, {"_id": 0})
     if not rule:
         raise HTTPException(404, "Rule not found")
+    if rule.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=rule.get("entity"))
     run_id = f"CARUN-{__import__('uuid').uuid4().hex[:10]}"
     started = datetime.now(timezone.utc)
     run = {"id": run_id, "rule_id": rule_id, "entity": rule.get("entity"), "status": "running", "started_at": _now(), "started_by": current.get("email"), "params": body or {}}
@@ -247,6 +286,7 @@ async def ca_run(rule_id: str, body: Dict[str, Any] | None = None, current=Depen
 
 @router.get("/exceptions")
 async def ca_exceptions(entity_code: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=2000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_rules(entity_code=entity_code)
     q: Dict[str, Any] = {"status": {"$ne": "closed"}, "control_code": {"$regex": "^CAR-"}}
     if entity_code:
@@ -262,6 +302,8 @@ async def ca_exception_create_case(exception_id: str, body: Dict[str, Any], curr
     ex = await db.exceptions.find_one({"id": exception_id}, {"_id": 0})
     if not ex:
         raise HTTPException(404, "Exception not found")
+    if ex.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=ex.get("entity"))
 
     now = _now()
     cid = f"case-ca-{__import__('uuid').uuid4().hex[:10]}"
@@ -318,6 +360,7 @@ async def ca_exception_create_case(exception_id: str, body: Dict[str, Any], curr
 
 @router.get("/rule-performance")
 async def ca_rule_performance(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_rules(entity_code=entity_code)
     q: Dict[str, Any] = {"entity": entity_code} if entity_code else {}
     rules = [r async for r in db.continuous_audit_rules.find(q, {"_id": 0}).limit(5000)]

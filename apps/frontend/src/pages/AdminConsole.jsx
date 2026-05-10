@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
 import { fmtDateTime } from "../lib/format";
+import { errorMessageFromAxios, errorMessageFromAxiosBlob } from "../lib/apiErrorMessage";
 import { Database, Cpu, ShieldCheck, ArrowsClockwise, Bell, Plus, Trash, Sparkle } from "@phosphor-icons/react";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
 import { MF_CC, MF_DEPT, MF_ENTITY, MF_PERIOD } from "../lib/mastersFilterKeys";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
 const AUDIT_URL_PARAM_KEYS = [
   "audit_q",
@@ -69,8 +71,9 @@ export default function AdminConsole() {
 
   const [modelVersions, setModelVersions] = useState([]);
   const [training, setTraining] = useState(false);
+  const defaultReportParams = useDashboardFilterParams();
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const [m, p, s, r, ns, n, ix, mv] = await Promise.all([
       http.get("/admin/models"),
       http.get("/admin/prompts"),
@@ -78,13 +81,15 @@ export default function AdminConsole() {
       http.get("/admin/ingestion-runs"),
       http.get("/notifications/settings"),
       http.get("/notifications"),
-      http.get("/copilot/index-status"),
+      http.get("/copilot/index-status", { params: defaultReportParams }),
       http.get("/admin/model-versions"),
     ]);
     setModels(m.data); setPrompts(p.data); setSummary(s.data); setRuns(r.data);
     setNotifSettings(ns.data); setNotifications(n.data); setIndexStatus(ix.data); setModelVersions(mv.data);
-  };
-  useEffect(() => { load(); }, []);
+  }, [defaultReportParams]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const logQueryParams = useMemo(() => {
     const params = { limit: LOG_LIMIT, offset: logOffset };
@@ -137,7 +142,7 @@ export default function AdminConsole() {
     setLogSinceTs(p.get("audit_since_ts") || "");
     setLogUntilTs(p.get("audit_until_ts") || "");
     setLogOffset(Number(p.get("audit_offset") || "0") || 0);
-  }, [location.search]);
+  }, [location.search, tab]);
 
   useEffect(() => {
     if (tab !== "logs") return;
@@ -198,7 +203,9 @@ export default function AdminConsole() {
     try {
       const { data } = await http.post("/anomaly/recalibrate");
       toast.success(`Recalibrated ${data.exceptions_recalibrated} exceptions`);
-    } catch { toast.error("Recalibration failed"); }
+    } catch (e) {
+      toast.error(errorMessageFromAxios(e, "Recalibration failed"));
+    }
     setRecalibrating(false);
   };
   const rebuildIndex = async () => {
@@ -206,7 +213,9 @@ export default function AdminConsole() {
       const { data } = await http.post("/copilot/rebuild-index");
       toast.success(`Vector index rebuilt · ${data.indexed_docs} docs`);
       await load();
-    } catch { toast.error("Rebuild failed"); }
+    } catch (e) {
+      toast.error(errorMessageFromAxios(e, "Rebuild failed"));
+    }
   };
 
   const trainModel = async () => {
@@ -215,7 +224,9 @@ export default function AdminConsole() {
       const { data } = await http.post("/anomaly/train", { notes: "admin-ui trigger" });
       toast.success(`Trained ${data.version_label} · ${data.metrics.n_train} samples · anomaly rate ${(data.metrics.test_anomaly_rate * 100).toFixed(1)}%`);
       await load();
-    } catch (e) { toast.error(e?.response?.data?.detail || "Training failed"); }
+    } catch (e) {
+      toast.error(errorMessageFromAxios(e, "Training failed"));
+    }
     setTraining(false);
   };
 
@@ -224,7 +235,9 @@ export default function AdminConsole() {
       await http.post(`/admin/model-versions/${id}/approve`);
       toast.success("Version approved and activated");
       await load();
-    } catch (e) { toast.error(e?.response?.data?.detail || "Approval failed"); }
+    } catch (e) {
+      toast.error(errorMessageFromAxios(e, "Approval failed"));
+    }
   };
 
   const sendBriefNow = async () => {
@@ -233,13 +246,15 @@ export default function AdminConsole() {
       if (data.skipped) toast.warning(`Skipped: ${data.skipped}`);
       else toast.success(`Daily brief dispatched · ${(data.dispatched_to || []).length} webhook(s)`);
       await load();
-    } catch { toast.error("Brief dispatch failed"); }
+    } catch (e) {
+      toast.error(errorMessageFromAxios(e, "Brief dispatch failed"));
+    }
   };
 
   const downloadScopedPack = async (format, filtersApplied) => {
     try {
       const resp = await http.get(`/reports/audit-committee-pack.${format}`, {
-        params: filtersApplied || {},
+        params: { ...defaultReportParams, ...(filtersApplied || {}) },
         responseType: "blob",
       });
       const blob = new Blob([resp.data]);
@@ -250,8 +265,9 @@ export default function AdminConsole() {
       a.click();
       URL.revokeObjectURL(url);
       toast.success(`Downloaded ${format.toUpperCase()} pack`);
-    } catch {
-      toast.error(`Download ${format.toUpperCase()} failed`);
+    } catch (e) {
+      const msg = await errorMessageFromAxiosBlob(e, `Download ${format.toUpperCase()} failed`);
+      toast.error(msg);
     }
   };
 
@@ -283,7 +299,7 @@ export default function AdminConsole() {
       URL.revokeObjectURL(url);
       toast.success(auditExportGzip ? "Downloaded audit logs CSV (gzip)" : "Downloaded audit logs CSV");
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "CSV export failed");
+      toast.error(await errorMessageFromAxiosBlob(e, "CSV export failed"));
     }
   };
 
@@ -308,7 +324,7 @@ export default function AdminConsole() {
       URL.revokeObjectURL(url);
       toast.success(auditExportGzip ? "Downloaded audit logs JSON (gzip)" : "Downloaded audit logs JSON");
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "JSON export failed");
+      toast.error(await errorMessageFromAxiosBlob(e, "JSON export failed"));
     }
   };
 
@@ -333,7 +349,7 @@ export default function AdminConsole() {
       URL.revokeObjectURL(url);
       toast.success(auditExportGzip ? "Downloaded audit logs NDJSON (gzip)" : "Downloaded audit logs NDJSON stream");
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "NDJSON export failed");
+      toast.error(await errorMessageFromAxiosBlob(e, "NDJSON export failed"));
     }
   };
 

@@ -47,7 +47,9 @@ class TestBoardReportingContracts:
     def test_phase39_reports_end_to_end(self, token):
         tpls = requests.get(f"{API}/reports/templates", headers=_h(token), timeout=60)
         assert tpls.status_code == 200, tpls.text
-        items = tpls.json().get("items") or []
+        tpl_body = tpls.json()
+        assert "entity_code" in tpl_body
+        items = tpl_body.get("items") or []
         assert items
 
         # generate
@@ -86,5 +88,7 @@ class TestBoardReportingContracts:
         # versions
         vs = requests.get(f"{API}/reports/versions", headers=_h(token), params={"template_id": "tpl-audit-committee-pack"}, timeout=60)
         assert vs.status_code == 200, vs.text
-        assert "items" in vs.json()
+        vs_body = vs.json()
+        assert "entity_code" in vs_body
+        assert "items" in vs_body
 

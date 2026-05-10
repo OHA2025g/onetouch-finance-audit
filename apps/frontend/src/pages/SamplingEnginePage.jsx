@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import { SectionCard } from "../components/PageShell";
 
 const METHODS = [
@@ -14,6 +15,7 @@ const METHODS = [
 
 export default function SamplingEnginePage() {
   const { engagementId } = useParams();
+  const dashboardParams = useDashboardFilterParams();
   const eid = decodeURIComponent(engagementId || "");
   const [plans, setPlans] = useState([]);
   const [papers, setPapers] = useState([]);
@@ -27,12 +29,12 @@ export default function SamplingEnginePage() {
 
   const loadPlans = useCallback(async () => {
     const [{ data: p }, { data: wb }] = await Promise.all([
-      http.get(`/audit-engagements/${encodeURIComponent(eid)}/sampling-plans`),
-      http.get(`/audit-engagements/${encodeURIComponent(eid)}/wp-workbench`),
+      http.get(`/audit-engagements/${encodeURIComponent(eid)}/sampling-plans`, { params: dashboardParams }),
+      http.get(`/audit-engagements/${encodeURIComponent(eid)}/wp-workbench`, { params: dashboardParams }),
     ]);
     setPlans(p.items || []);
     setPapers(wb.working_papers || []);
-  }, [eid]);
+  }, [eid, dashboardParams]);
 
   useEffect(() => {
     if (!eid) return;
@@ -47,7 +49,7 @@ export default function SamplingEnginePage() {
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await http.get(`/sampling-plans/${encodeURIComponent(selectedPlanId)}/samples`);
+        const { data } = await http.get(`/sampling-plans/${encodeURIComponent(selectedPlanId)}/samples`, { params: dashboardParams });
         if (!cancelled) setSamples(data.items || []);
       } catch {
         if (!cancelled) setSamples([]);
@@ -56,7 +58,7 @@ export default function SamplingEnginePage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedPlanId]);
+  }, [selectedPlanId, dashboardParams]);
 
   const createPlan = async (e) => {
     e.preventDefault();
@@ -69,7 +71,7 @@ export default function SamplingEnginePage() {
         seed: seed === "" ? null : Number(seed),
         working_paper_id: wpLink || null,
       };
-      await http.post("/sampling-plans", body);
+      await http.post("/sampling-plans", body, { params: dashboardParams });
       await loadPlans();
       toast.success("Sampling plan created");
     } catch {
@@ -83,7 +85,7 @@ export default function SamplingEnginePage() {
       return;
     }
     try {
-      const { data } = await http.post(`/sampling-plans/${encodeURIComponent(selectedPlanId)}/generate`);
+      const { data } = await http.post(`/sampling-plans/${encodeURIComponent(selectedPlanId)}/generate`, {}, { params: dashboardParams });
       setSamples(data.samples || []);
       await loadPlans();
       toast.success(`Generated ${(data.samples || []).length} selections`);

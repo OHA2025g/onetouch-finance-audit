@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/vendor-risk", tags=["vendor-risk"])
@@ -33,6 +34,7 @@ async def _vendor_open_invoices_total(vendor_id: str) -> float:
 
 @router.get("/summary")
 async def vendor_risk_summary(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code
@@ -91,6 +93,7 @@ async def vendor_risk_vendors(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     filt: Dict[str, Any] = {}
     if entity_code:
         filt["entity"] = entity_code
@@ -110,12 +113,14 @@ async def vendor_risk_vendor_detail(vendor_id: str, current=Depends(get_current_
         v = await db.vendors.find_one({"vendor_code": vendor_id}, {"_id": 0})
     if not v:
         return {"id": vendor_id, "found": False, "as_of": as_of_now()}
+    await enforce_entity_scope(db, current=current, requested_entity_code=v.get("entity"))
     open_ap = await _vendor_open_invoices_total(v["id"])
     return {"vendor": v, "ap_open_amount": open_ap, "found": True, "as_of": as_of_now()}
 
 
 @router.get("/duplicates")
 async def vendor_risk_duplicates(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code
@@ -134,6 +139,7 @@ async def vendor_risk_duplicates(entity_code: Optional[str] = Query(None), curre
 
 @router.get("/bank-change-alerts")
 async def vendor_risk_bank_change_alerts(entity_code: Optional[str] = Query(None), days: int = Query(14, ge=1, le=120), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code
@@ -159,6 +165,7 @@ async def vendor_risk_bank_change_alerts(entity_code: Optional[str] = Query(None
 
 @router.get("/non-po-spend")
 async def vendor_risk_non_po_spend(entity_code: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=500), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {"po_id": None}
     if entity_code:
         q["entity"] = entity_code
@@ -172,6 +179,7 @@ async def vendor_risk_non_po_spend(entity_code: Optional[str] = Query(None), lim
 @router.get("/advances")
 async def vendor_risk_advances(entity_code: Optional[str] = Query(None), limit: int = Query(100, ge=1, le=1000), current=Depends(get_current_user)):
     # Seed doesn’t explicitly model advances; expose a stable placeholder surface.
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return {"items": [], "count": 0, "as_of": as_of_now(), "entity_code": entity_code, "note": "Seed vendor advances in `vendor_advances` for ageing & concentration."}
 
 
@@ -182,6 +190,8 @@ async def vendor_risk_create_case(vendor_id: str, body: Dict[str, Any], current=
         v = await db.vendors.find_one({"vendor_code": vendor_id}, {"_id": 0})
     if not v:
         return {"status": "not_found", "vendor_id": vendor_id, "as_of": as_of_now()}
+
+    await enforce_entity_scope(db, current=current, requested_entity_code=v.get("entity"))
 
     now = as_of_now()
     cid = f"case-vr-{__import__('uuid').uuid4().hex[:10]}"

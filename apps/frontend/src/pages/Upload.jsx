@@ -29,7 +29,7 @@ export default function Upload() {
       const form = new FormData();
       form.append("file", file);
       form.append("dataset", dataset);
-      const { data } = await http.post("/ingest/csv", form, { headers: { "Content-Type": "multipart/form-data" } });
+      const { data } = await http.post("/ingest/csv", form);
       setResult(data);
       toast.success(`Ingested ${data.rows_ingested} rows`);
     } catch (err) {

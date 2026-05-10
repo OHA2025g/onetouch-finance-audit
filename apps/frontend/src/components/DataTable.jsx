@@ -1,5 +1,6 @@
 import React from "react";
 import clsx from "clsx";
+import { toProperHeadingLabel } from "../lib/headingCase";
 
 /**
  * Premium table shell:
@@ -81,13 +82,15 @@ export function DataTableTh({ children, className, align = "left", colSpan, rowS
       colSpan={colSpan}
       rowSpan={rowSpan}
       className={clsx(
-        "crt-num p-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground",
+        "crt-num p-3 text-[10px] font-medium tracking-wide text-muted-foreground",
         align === "right" && "text-right",
         align === "center" && "text-center",
         className
       )}
     >
-      {children}
+      {typeof children === "string" || typeof children === "number"
+        ? toProperHeadingLabel(String(children))
+        : children}
     </th>
   );
 }

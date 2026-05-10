@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/credit-notes", tags=["credit-notes"])
@@ -74,6 +75,7 @@ async def _ensure_seed_credit_notes(entity_code: Optional[str] = None) -> int:
 
 @router.get("/summary")
 async def credit_notes_summary(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_credit_notes(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -99,6 +101,7 @@ async def credit_notes_summary(entity_code: Optional[str] = Query(None), current
 
 @router.get("")
 async def credit_notes_list(entity_code: Optional[str] = Query(None), limit: int = Query(200, ge=1, le=2000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_credit_notes(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -111,6 +114,7 @@ async def credit_notes_list(entity_code: Optional[str] = Query(None), limit: int
 
 @router.get("/high-risk")
 async def credit_notes_high_risk(entity_code: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=500), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_credit_notes(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -125,6 +129,7 @@ async def credit_notes_high_risk(entity_code: Optional[str] = Query(None), limit
 
 @router.get("/revenue-reversals")
 async def credit_notes_revenue_reversals(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_credit_notes(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -140,6 +145,9 @@ async def credit_notes_revenue_reversals(entity_code: Optional[str] = Query(None
 
 @router.post("/{credit_note_id}/review")
 async def credit_note_review(credit_note_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
+    cn0 = await db.credit_notes.find_one({"id": credit_note_id}, {"_id": 0, "entity": 1})
+    if cn0 and cn0.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=cn0.get("entity"))
     decision = str(body.get("decision") or "reviewed")
     note = body.get("note")
     await db.credit_note_reviews.insert_one({"id": f"cnr-{__import__('uuid').uuid4().hex[:10]}", "credit_note_id": credit_note_id, "decision": decision, "note": note, "by": current.get("email"), "at": _now()})
@@ -152,6 +160,8 @@ async def credit_note_create_case(credit_note_id: str, body: Dict[str, Any], cur
     cn = await db.credit_notes.find_one({"id": credit_note_id}, {"_id": 0})
     if not cn:
         raise HTTPException(404, "Credit note not found")
+    if cn.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=cn.get("entity"))
 
     now = _now()
     cid = f"case-cn-{__import__('uuid').uuid4().hex[:10]}"

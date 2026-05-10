@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { http } from "../lib/api";
-import { useMastersFilters } from "../lib/MastersFilterContext";
-import { buildDashboardFilterParams } from "../lib/mastersDashboardParams";
+import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import { StatCard } from "../components/StatCard";
 import { SeverityBadge, StatusBadge, PriorityTag } from "../components/Badges";
@@ -16,21 +15,14 @@ import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, Dat
 export default function MyCases() {
   const [d, setD] = useState(null);
   const nav = useNavigate();
-  const { entityCode, periodYm, periodExplicit, departmentId, costCenterId } = useMastersFilters();
+  const dashboardParams = useDashboardFilterParams();
 
   useEffect(() => {
-    const params = buildDashboardFilterParams({
-      entityCode,
-      periodYm,
-      periodExplicit,
-      departmentId,
-      costCenterId,
-    });
     http
-      .get("/dashboard/my-cases", { params })
+      .get("/dashboard/my-cases", { params: dashboardParams })
       .then((r) => setD(r.data))
       .catch(() => toast.error("Load failed"));
-  }, [entityCode, periodYm, periodExplicit, departmentId, costCenterId]);
+  }, [dashboardParams]);
 
   if (!d) {
     return (

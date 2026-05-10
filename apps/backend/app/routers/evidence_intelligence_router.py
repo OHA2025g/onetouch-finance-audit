@@ -11,11 +11,24 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_user
+from app.core.entity_scope import entity_scope_enforced
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import assert_exception_entity_scope, enforce_entity_scope
 
 
 router = APIRouter(prefix="/evidence-intelligence", tags=["evidence-intelligence"])
+
+
+async def _enforce_evidence_document_entity_scope(db, current: dict, doc: Dict[str, Any]) -> None:
+    """Scope reads/writes on evidence documents: stamped ``entity`` must match user; legacy docs without it denied."""
+    if doc.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=doc.get("entity"))
+        return
+    if await entity_scope_enforced(db) and current.get("role") != "Super Admin":
+        user = await db.users.find_one({"id": current.get("user_id")}, {"_id": 0, "entity": 1})
+        if (user or {}).get("entity"):
+            raise HTTPException(403, "Entity scope violation")
 
 
 def _now() -> str:
@@ -92,13 +105,17 @@ def _quality_issues(doc_type: str, fields: Dict[str, Any]) -> List[Dict[str, Any
 async def evidence_extract(body: Dict[str, Any], current=Depends(get_current_user)):
     did = f"DOC-{__import__('uuid').uuid4().hex[:10]}"
     doc_type = _infer_doc_type(body)
-    fields = _mock_extract_fields(doc_type, body)
+    ent_ctx = await enforce_entity_scope(
+        db, current=current, requested_entity_code=(body.get("entity") or body.get("entity_code"))
+    )
+    body_for_mock = {**body, "entity": ent_ctx or body.get("entity") or "US-HQ"}
+    fields = _mock_extract_fields(doc_type, body_for_mock)
     issues = _quality_issues(doc_type, fields)
     score = next((i.get("value") for i in issues if i.get("field") == "__quality_score__"), None)
 
     doc = {
         "id": did,
-        "entity": fields.get("entity") or body.get("entity") or "US-HQ",
+        "entity": fields.get("entity") or body_for_mock.get("entity") or "US-HQ",
         "document_name": body.get("document_name") or did,
         "document_type": doc_type,
         "source_uri": body.get("uri") or body.get("source_uri"),
@@ -150,11 +167,25 @@ async def evidence_link(document_id: str, body: Dict[str, Any], current=Depends(
     doc = await db.evidence_documents.find_one({"id": document_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Document not found")
+    await _enforce_evidence_document_entity_scope(db, current, doc)
     link_id = f"LINK-{__import__('uuid').uuid4().hex[:10]}"
     target_type = body.get("target_type") or "exception"  # exception|case|control
     target_id = body.get("target_id")
     if not target_id:
         raise HTTPException(400, "target_id required")
+    if target_type == "exception":
+        ex = await db.exceptions.find_one({"id": target_id}, {"_id": 0})
+        if ex:
+            await assert_exception_entity_scope(db, current=current, exception=ex)
+    elif target_type == "case":
+        case = await db.cases.find_one({"id": target_id}, {"_id": 0})
+        if case:
+            if case.get("entity"):
+                await enforce_entity_scope(db, current=current, requested_entity_code=case.get("entity"))
+            elif await entity_scope_enforced(db) and current.get("role") != "Super Admin":
+                user = await db.users.find_one({"id": current.get("user_id")}, {"_id": 0, "entity": 1})
+                if (user or {}).get("entity"):
+                    raise HTTPException(403, "Entity scope violation")
     link = {
         "id": link_id,
         "document_id": document_id,
@@ -172,6 +203,7 @@ async def evidence_link(document_id: str, body: Dict[str, Any], current=Depends(
 
 @router.get("/quality-issues")
 async def evidence_quality_issues(entity_code: Optional[str] = Query(None), status: str = Query("open"), limit: int = Query(200, ge=1, le=2000), offset: int = Query(0, ge=0), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
         q["entity"] = entity_code
@@ -189,6 +221,7 @@ async def evidence_get(document_id: str, current=Depends(get_current_user)):
     doc = await db.evidence_documents.find_one({"id": document_id}, {"_id": 0})
     if not doc:
         return {"id": document_id, "found": False, "as_of": _now()}
+    await _enforce_evidence_document_entity_scope(db, current, doc)
     ext = await db.evidence_extractions.find_one({"document_id": document_id}, {"_id": 0})
     links = [l async for l in db.evidence_links.find({"document_id": document_id}, {"_id": 0}).limit(200)]
     return {"found": True, "document": doc, "extraction": ext, "links": links, "as_of": _now()}
@@ -199,6 +232,7 @@ async def evidence_review(document_id: str, body: Dict[str, Any], current=Depend
     doc = await db.evidence_documents.find_one({"id": document_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Document not found")
+    await _enforce_evidence_document_entity_scope(db, current, doc)
     rid = f"REV-{__import__('uuid').uuid4().hex[:10]}"
     decision = body.get("decision") or "accepted"  # accepted|rejected|needs_more_info
     review = {

@@ -1,7 +1,7 @@
 """Pydantic models used for API I/O. Mongo docs are stored as plain dicts (with 'id' fields)."""
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field, EmailStr
 
 
 # ---------------- Auth ----------------
@@ -147,9 +147,14 @@ class EvidenceGraph(BaseModel):
 
 # ---------------- Copilot ----------------
 class CopilotAskRequest(BaseModel):
-    question: str
+    question: str = Field(..., min_length=1, max_length=8000)
     session_id: Optional[str] = None
     mode: Optional[str] = None
+    # Phase 37/40 — scope Copilot retrieval to the same masters as dashboards.
+    entity_code: Optional[str] = None
+    period_ym: Optional[str] = None
+    department_id: Optional[str] = None
+    cost_center_id: Optional[str] = None
 
 
 class CopilotCitation(BaseModel):
@@ -157,6 +162,7 @@ class CopilotCitation(BaseModel):
     source_id: str
     label: str
     snippet: Optional[str] = None
+    app_path: Optional[str] = None
 
 
 class CopilotAnswer(BaseModel):

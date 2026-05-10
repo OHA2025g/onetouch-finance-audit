@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Query
 from app.core.security import require_roles
 from app.deps import db
 from app.services import kpi_service as ks
+from app.services.rbac_service import enforce_entity_scope
 
 router = APIRouter(prefix="/kpi", tags=["kpi"])
 
@@ -28,6 +29,7 @@ async def kpi_refresh(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await ks.refresh_kpis(
         db,
         entity_code=entity_code,
@@ -51,6 +53,7 @@ async def kpi_cfo_summary(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await ks.cfo_kpi_summary(
         db,
         entity_code=entity_code,
@@ -69,6 +72,7 @@ async def kpi_trend(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await ks.kpi_trend(
         db,
         kpi_id,
@@ -88,6 +92,7 @@ async def kpi_drilldown(
     cost_center_id: Optional[str] = Query(None),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await ks.kpi_drilldown(
         db,
         kpi_id,

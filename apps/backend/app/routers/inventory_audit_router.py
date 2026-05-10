@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
+from app.services.rbac_service import enforce_entity_scope
 
 
 router = APIRouter(prefix="/inventory-audit", tags=["inventory-audit"])
@@ -70,6 +71,7 @@ async def _ensure_seed_inventory(entity_code: Optional[str] = None) -> int:
 
 @router.get("/summary")
 async def inventory_summary(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_inventory(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -102,6 +104,7 @@ async def inventory_summary(entity_code: Optional[str] = Query(None), current=De
 
 @router.get("/ageing")
 async def inventory_ageing(entity_code: Optional[str] = Query(None), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_inventory(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -125,6 +128,7 @@ async def inventory_ageing(entity_code: Optional[str] = Query(None), current=Dep
 
 @router.get("/slow-moving")
 async def inventory_slow_moving(entity_code: Optional[str] = Query(None), days: int = Query(180, ge=30, le=720), limit: int = Query(50, ge=1, le=500), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_inventory(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -142,6 +146,7 @@ async def inventory_slow_moving(entity_code: Optional[str] = Query(None), days: 
 
 @router.get("/valuation-exceptions")
 async def inventory_valuation_exceptions(entity_code: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=500), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     await _ensure_seed_inventory(entity_code=entity_code)
     q: Dict[str, Any] = {}
     if entity_code:
@@ -165,6 +170,7 @@ async def inventory_valuation_exceptions(entity_code: Optional[str] = Query(None
 
 @router.get("/adjustments")
 async def inventory_adjustments(entity_code: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=500), current=Depends(get_current_user)):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     # No real adjustments in seed; expose stable surface backed by optional collection.
     q: Dict[str, Any] = {}
     if entity_code:
@@ -179,6 +185,8 @@ async def inventory_create_case(inventory_id: str, body: Dict[str, Any], current
     it = await db.inventory_items.find_one({"id": inventory_id}, {"_id": 0})
     if not it:
         raise HTTPException(404, "Inventory item not found")
+    if it.get("entity"):
+        await enforce_entity_scope(db, current=current, requested_entity_code=it.get("entity"))
 
     now = _now()
     cid = f"case-inv-{__import__('uuid').uuid4().hex[:10]}"

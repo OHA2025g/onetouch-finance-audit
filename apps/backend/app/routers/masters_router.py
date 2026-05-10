@@ -8,10 +8,10 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from app.auth import get_current_user
-from app.core.entity_scope import resolve_entity_code_for_query
 from app.core.security import require_roles
 from app.deps import db
 from app.deps import audit_log
+from app.services.rbac_service import enforce_entity_scope
 from app.schemas.masters import (
     AuditTrailListResponse,
     BankAccountListResponse,
@@ -48,7 +48,7 @@ async def get_entities(
     current=Depends(get_current_user),
 ):
     """Legal entities (normalized from `entities` collection)."""
-    eff = await resolve_entity_code_for_query(db, current, entity_code)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await mds.list_legal_entities(db, eff)
     return {"items": items, "count": len(items), "as_of": iso_utc(datetime.now(timezone.utc))}
 
@@ -65,7 +65,7 @@ async def get_business_units(
     entity_code: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    eff = await resolve_entity_code_for_query(db, current, entity_code)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await mds.list_business_units(db, eff)
     return {"items": items, "count": len(items), "as_of": iso_utc(datetime.now(timezone.utc))}
 
@@ -75,7 +75,7 @@ async def get_locations(
     entity_code: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    eff = await resolve_entity_code_for_query(db, current, entity_code)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await mds.list_locations(db, eff)
     return {"items": items, "count": len(items), "as_of": iso_utc(datetime.now(timezone.utc))}
 
@@ -85,7 +85,7 @@ async def get_departments(
     entity_code: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    eff = await resolve_entity_code_for_query(db, current, entity_code)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await mds.list_departments(db, eff)
     return {"items": items, "count": len(items), "as_of": iso_utc(datetime.now(timezone.utc))}
 
@@ -95,7 +95,7 @@ async def get_cost_centers(
     entity_code: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    eff = await resolve_entity_code_for_query(db, current, entity_code)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await mds.list_cost_centers(db, eff)
     return {"items": items, "count": len(items), "as_of": iso_utc(datetime.now(timezone.utc))}
 
@@ -105,7 +105,7 @@ async def get_gl_accounts(
     entity_code: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    eff = await resolve_entity_code_for_query(db, current, entity_code)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await mds.list_gl_accounts(db, eff)
     return {"items": items, "count": len(items), "as_of": iso_utc(datetime.now(timezone.utc))}
 
@@ -118,7 +118,7 @@ async def get_vendors(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
-    eff = await resolve_entity_code_for_query(db, current, entity_code)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await mds.list_vendors(db, eff, limit=limit, offset=offset, q=q)
     return {"items": items, "count": len(items), "as_of": iso_utc(datetime.now(timezone.utc))}
 
@@ -131,7 +131,7 @@ async def get_customers(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
-    eff = await resolve_entity_code_for_query(db, current, entity_code)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await mds.list_customers(db, eff, limit=limit, offset=offset, q=q)
     return {"items": items, "count": len(items), "as_of": iso_utc(datetime.now(timezone.utc))}
 
@@ -144,7 +144,7 @@ async def get_employees(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
-    eff = await resolve_entity_code_for_query(db, current, entity_code)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await mds.list_employees(db, eff, limit=limit, offset=offset, q=q)
     return {"items": items, "count": len(items), "as_of": iso_utc(datetime.now(timezone.utc))}
 
@@ -154,7 +154,7 @@ async def get_bank_accounts(
     entity_code: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    eff = await resolve_entity_code_for_query(db, current, entity_code)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await mds.list_bank_accounts(db, eff)
     return {"items": items, "count": len(items), "as_of": iso_utc(datetime.now(timezone.utc))}
 
@@ -167,7 +167,7 @@ async def get_transactions(
     offset: int = Query(0, ge=0),
     current=Depends(get_current_user),
 ):
-    eff = await resolve_entity_code_for_query(db, current, entity_code)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await mds.list_transactions(db, eff, limit=limit, offset=offset, q=q)
     return {"items": items, "count": len(items), "as_of": iso_utc(datetime.now(timezone.utc))}
 
@@ -179,7 +179,7 @@ async def get_transaction_lines(
     limit: int = Query(500, ge=1, le=5000),
     current=Depends(get_current_user),
 ):
-    eff = await resolve_entity_code_for_query(db, current, entity_code)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await mds.list_transaction_lines(db, eff, transaction_id, limit)
     return {"items": items, "count": len(items), "as_of": iso_utc(datetime.now(timezone.utc))}
 
@@ -190,7 +190,7 @@ async def get_documents(
     limit: int = Query(200, ge=1, le=1000),
     current=Depends(get_current_user),
 ):
-    eff = await resolve_entity_code_for_query(db, current, entity_code)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await mds.list_documents(db, eff, limit)
     return {"items": items, "count": len(items), "as_of": iso_utc(datetime.now(timezone.utc))}
 
@@ -201,7 +201,7 @@ async def get_risk_scores(
     limit: int = Query(200, ge=1, le=2000),
     current=Depends(get_current_user),
 ):
-    eff = await resolve_entity_code_for_query(db, current, entity_code)
+    eff = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     items = await mds.list_risk_scores(db, eff, limit)
     return {"items": items, "count": len(items), "as_of": iso_utc(datetime.now(timezone.utc))}
 
@@ -220,7 +220,7 @@ async def get_audit_trail(
     current=Depends(get_current_user),
 ):
     # Entity scope applies to entity-filtered audit trail only (for non-admins).
-    eff_entity = await resolve_entity_code_for_query(db, current, entity_code)
+    eff_entity = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     out = await mds.query_audit_trail(
         db,
         q=q,
