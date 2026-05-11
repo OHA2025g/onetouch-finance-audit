@@ -22,8 +22,9 @@ def _login(email, password):
     last_err = None
     while time.time() < deadline:
         try:
-            requests.get(f"{BASE_URL}/api/system/health", timeout=2)
-            break
+            r = requests.get(f"{BASE_URL}/api/", timeout=2)
+            if r.status_code == 200:
+                break
         except Exception as e:  # noqa: BLE001
             last_err = e
             time.sleep(0.5)

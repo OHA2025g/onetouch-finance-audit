@@ -27,6 +27,13 @@ test.describe("Phase 27 — Forex exposure workbench (PR-67)", () => {
     await expect(page.getByTestId("fx-exposure-table")).toBeVisible();
   });
 
+  test("SRS alias /app/treasury/forex-exposure loads forex workbench", async ({ page }) => {
+    await loginAsCfo(page);
+    await page.goto("/app/treasury/forex-exposure");
+    await expect(page.getByTestId("forex-exposure-workbench-page")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-testid="forex-exposure-workbench-page"][data-forex-phase27-surface="true"]')).toBeVisible();
+  });
+
   test("direct forex-exposure-dashboard loads ladder", async ({ page }) => {
     await loginAsCfo(page);
     await page.goto("/app/treasury/forex-exposure-dashboard");

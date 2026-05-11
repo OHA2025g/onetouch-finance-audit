@@ -33,7 +33,7 @@ export default function Layout() {
 
   return (
     <div
-      className="flex h-screen min-h-0 overflow-hidden bg-zinc-100 dark:bg-background"
+      className="flex h-screen min-h-0 overflow-hidden bg-zinc-100 bg-grid dark:bg-background"
       data-testid="app-layout"
     >
       {mobileNavOpen ? (
@@ -46,7 +46,7 @@ export default function Layout() {
       ) : null}
       <aside
         className={clsx(
-          "fixed left-0 top-0 z-50 flex h-screen flex-col overflow-hidden border-r border-zinc-200 bg-white/95 backdrop-blur-xl transition-[transform,width] duration-200 dark:border-zinc-800 dark:bg-zinc-950/95",
+          "fixed left-0 top-0 z-50 flex h-screen flex-col overflow-hidden border-r border-zinc-200 bg-white/95 shadow-[4px_0_24px_-8px_rgba(0,0,0,0.08)] backdrop-blur-xl transition-[transform,width,box-shadow] duration-200 dark:border-zinc-800 dark:bg-zinc-950/95 dark:shadow-[4px_0_32px_-8px_rgba(0,0,0,0.5)]",
           collapsed ? "w-16" : "w-64",
           mobileNavOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
@@ -54,7 +54,7 @@ export default function Layout() {
       >
         <div className="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-5 dark:border-zinc-800">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center bg-primary text-primary-foreground shadow-sm">
+            <div className="flex h-7 w-7 items-center justify-center border border-primary/30 bg-primary text-primary-foreground shadow-[0_0_0_1px_rgba(255,255,255,0.08)_inset]">
               <Lightning size={14} weight="fill" />
             </div>
             {!collapsed && (
@@ -82,7 +82,7 @@ export default function Layout() {
               {!collapsed && sec.title ? (
                 <button
                   type="button"
-                  className="crt-overline flex w-full items-center justify-between text-muted-foreground px-4 pb-1 pt-3 hover:text-foreground transition-colors"
+                  className="crt-overline flex w-full cursor-pointer items-center justify-between text-muted-foreground px-4 pb-1 pt-3 transition-colors hover:bg-zinc-100/80 hover:text-foreground active:bg-zinc-200/80 dark:hover:bg-zinc-900/80 dark:active:bg-zinc-800/80"
                   onClick={() =>
                     setOpenSections((prev) => {
                       const next = new Set(prev);
@@ -111,10 +111,10 @@ export default function Layout() {
                     onClick={closeMobile}
                     className={({ isActive }) =>
                       clsx(
-                        "group flex items-center gap-3 border-l-2 px-4 py-2.5 text-sm transition-all duration-150",
+                        "group relative flex items-center gap-3 border-l-[3px] px-4 py-2.5 text-sm transition-[background-color,border-color,box-shadow,padding] duration-150",
                         isActive
-                          ? "border-primary bg-muted/90 text-foreground shadow-sm dark:bg-zinc-900/80"
-                          : "border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                          ? "border-primary bg-primary/[0.07] text-foreground shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)] dark:bg-primary/10 dark:shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]"
+                          : "border-transparent text-muted-foreground hover:border-primary/25 hover:bg-muted/70 hover:text-foreground active:bg-muted dark:hover:bg-zinc-900/60"
                       )
                     }
                   >
@@ -163,7 +163,10 @@ export default function Layout() {
           sidebarCollapsed={collapsed}
           onOpenMobileNav={() => setMobileNavOpen(true)}
         />
-        <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-50 pt-12 dark:bg-zinc-950" data-testid="main-content">
+        <div
+          className="min-h-0 flex-1 overflow-y-auto bg-zinc-50 bg-grid pt-12 dark:bg-zinc-950"
+          data-testid="main-content"
+        >
           <Breadcrumbs />
           <AppErrorBoundary>
             <MastersFilterProvider>
@@ -187,7 +190,7 @@ function TopBar({ sidebarCollapsed, onOpenMobileNav = () => {} }) {
   return (
     <header
       className={clsx(
-        "fixed right-0 top-0 z-30 flex h-12 items-center justify-between border-b border-zinc-200 bg-white/90 px-4 backdrop-blur-xl transition-[left] duration-150 dark:border-zinc-800 dark:bg-zinc-950/90 sm:px-6",
+        "fixed right-0 top-0 z-30 flex h-12 items-center justify-between border-b border-zinc-200 border-b-primary/15 bg-white/90 px-4 shadow-[0_1px_0_0_hsl(var(--primary)/0.08)] backdrop-blur-xl transition-[left,box-shadow] duration-150 dark:border-zinc-800 dark:border-b-primary/25 dark:bg-zinc-950/90 sm:px-6",
         "left-0",
         sidebarCollapsed ? "lg:left-16" : "lg:left-64"
       )}
@@ -196,7 +199,7 @@ function TopBar({ sidebarCollapsed, onOpenMobileNav = () => {} }) {
       <div className="crt-num flex min-w-0 flex-1 items-center gap-3 text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground sm:gap-6">
         <button
           type="button"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-zinc-200 text-foreground hover:bg-zinc-100 lg:hidden dark:border-zinc-700 dark:hover:bg-zinc-900"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-none border border-zinc-200 text-foreground transition-colors hover:border-primary/35 hover:bg-zinc-100 active:scale-[0.98] lg:hidden dark:border-zinc-700 dark:hover:bg-zinc-900"
           aria-label="Open navigation menu"
           data-testid="mobile-nav-open"
           onClick={onOpenMobileNav}
@@ -204,7 +207,11 @@ function TopBar({ sidebarCollapsed, onOpenMobileNav = () => {} }) {
           <List size={18} weight="bold" />
         </button>
         <span className="flex items-center gap-2">
-          <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-[hsl(var(--chart-4))]" /> system · live
+          <span
+            className="pulse-dot h-1.5 w-1.5 shrink-0 rounded-none bg-[hsl(var(--chart-4))] shadow-[0_0_0_1px_hsl(var(--chart-4)/0.35)]"
+            aria-hidden
+          />{" "}
+          system · live
         </span>
         <span>
           {now.toLocaleString("en-GB", {
@@ -223,13 +230,13 @@ function TopBar({ sidebarCollapsed, onOpenMobileNav = () => {} }) {
           onClick={toggle}
           title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           aria-label="Toggle theme"
-          className="crt-card flex h-8 items-center gap-2 rounded-sm px-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+          className="crt-card flex h-8 items-center gap-2 rounded-none px-3 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground active:brightness-95"
         >
           {theme === "dark" ? <Sun size={13} weight="regular" /> : <Moon size={13} weight="regular" />}
           <span>{theme === "dark" ? "light" : "dark"}</span>
         </button>
         {user && (
-          <div className="crt-card flex items-center gap-2 rounded-sm px-3 py-1">
+          <div className="crt-card flex items-center gap-2 rounded-none px-3 py-1">
             <div className="flex h-6 w-6 items-center justify-center bg-primary text-xs text-primary-foreground crt-num">
               {user.full_name?.[0] || "?"}
             </div>

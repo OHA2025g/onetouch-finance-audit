@@ -13,32 +13,26 @@ All responses must be auth-protected and include stable top-level keys + as_of.
 
 from __future__ import annotations
 
-import os
 import time
 
 import pytest
 import requests
 
+from l4_http_common import resolve_react_app_backend_url, wait_until_api_ready
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL")
-assert BASE_URL, "REACT_APP_BACKEND_URL must be set to run HTTP tests"
+
+BASE_URL = resolve_react_app_backend_url()
+assert BASE_URL, (
+    "Set REACT_APP_BACKEND_URL to the API root (e.g. http://127.0.0.1:8000), or define it in apps/frontend/.env."
+)
 API = f"{BASE_URL.rstrip('/')}/api"
 
 
 CREDS = {"cfo": ("cfo@onetouch.ai", "demo1234")}
 
+
 def _wait_api(timeout_s: float = 60.0) -> None:
-    """Avoid flakiness: container may be restarting while pytest starts."""
-    deadline = time.time() + timeout_s
-    last_err: Exception | None = None
-    while time.time() < deadline:
-        try:
-            requests.get(f"{API}/system/health", timeout=2)
-            return
-        except Exception as e:  # noqa: BLE001
-            last_err = e
-            time.sleep(0.5)
-    raise AssertionError(f"API not reachable within {timeout_s}s: {last_err}")
+    wait_until_api_ready(API, timeout_s=timeout_s)
 
 
 def _login(email: str, password: str) -> str:

@@ -17,6 +17,8 @@ test.describe("Phase 4 — CFO Command Center cockpit shell (PR-44)", () => {
     await expect(page.getByTestId("export-xlsx-btn")).toBeVisible();
     await expect(page.getByTestId("export-pack-btn")).toBeVisible();
 
+    await expect(page.getByTestId("cfo-cockpit-action-queue-collapse")).toBeVisible();
+    await page.getByTestId("cfo-cockpit-action-queue-collapse").click();
     await expect(
       page.getByTestId("cfo-action-queue-empty").or(page.locator('[data-testid^="cfo-action-item"]')),
     ).toBeVisible({ timeout: 30_000 });

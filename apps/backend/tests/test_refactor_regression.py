@@ -4,18 +4,15 @@ Verifies every endpoint from iteration_5 baseline still returns the same
 status and response shape after splitting server.py into routers and
 DrillView.jsx into per-type renderers. Zero-behavior-change refactor.
 """
-import os
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL")
-if not BASE_URL:
-    with open("/app/frontend/.env") as f:
-        for line in f:
-            if line.startswith("REACT_APP_BACKEND_URL"):
-                BASE_URL = line.split("=", 1)[1].strip().strip('"')
-                break
-assert BASE_URL, "REACT_APP_BACKEND_URL must be set"
+from l4_http_common import resolve_react_app_backend_url
+
+BASE_URL = resolve_react_app_backend_url()
+assert BASE_URL, (
+    "Set REACT_APP_BACKEND_URL or add it to apps/frontend/.env (see l4_http_common.resolve_react_app_backend_url)."
+)
 BASE_URL = BASE_URL.rstrip("/")
 
 API = f"{BASE_URL}/api"

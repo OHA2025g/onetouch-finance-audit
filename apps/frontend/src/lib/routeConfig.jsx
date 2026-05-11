@@ -10,10 +10,8 @@ import {
   ShieldCheck,
   Briefcase,
   ListChecks,
-  Graph,
   ChatCircleDots,
   GearSix,
-  UploadSimple,
   TreeStructure,
   Gavel,
   Plug,
@@ -21,7 +19,6 @@ import {
   Command,
   ClipboardText,
   FileText,
-  Pulse,
   Users,
   SquaresFour,
   Factory,
@@ -32,6 +29,61 @@ import {
   PresentationChart,
   Sparkle,
   LinkSimple,
+  ListBullets,
+  Kanban,
+  Table,
+  Desktop,
+  IdentificationCard,
+  Coins,
+  ChartBar,
+  TrendUp,
+  SlidersHorizontal,
+  Package,
+  Scan,
+  Buildings,
+  FolderOpen,
+  SealCheck,
+  GitBranch,
+  ShoppingCart,
+  Receipt,
+  CurrencyDollar,
+  ArrowsClockwise,
+  Bank,
+  Clock,
+  Globe,
+  Handshake,
+  Newspaper,
+  Database,
+  ShieldWarning,
+  UsersFour,
+  NotePencil,
+  Robot,
+  Student,
+  Tabs,
+  Binoculars,
+  Folders,
+  ChatText,
+  Crosshair,
+  Eye,
+  CloudArrowUp,
+  BookOpenText,
+  Cpu,
+  MagnifyingGlass,
+  Target,
+  Scroll,
+  Key,
+  Notebook,
+  FileMagnifyingGlass,
+  Calendar,
+  ClockCountdown,
+  CheckCircle,
+  Flag,
+  ArrowsDownUp,
+  House,
+  Vault,
+  Hexagon,
+  FileLock,
+  ShieldPlus,
 } from "@phosphor-icons/react";
 
 /** null = all authenticated roles for that nav mode */
@@ -72,23 +124,23 @@ const CFO_GROUPS = [
     title: "CFO Command Center",
     items: [
       { to: "/app/cfo", label: "CFO Cockpit", icon: Gauge, roles: ROLES.CFO_LIKE },
-      { to: "/app/cfo-action-queue", label: "Action queue", icon: ClipboardText, roles: ROLES.CFO_LIKE },
-      { to: "/app/readiness", label: "Process readiness matrix", icon: Pulse, roles: ROLES.CFO_LIKE },
-      { to: "/app/controller", label: "Controller dashboard", icon: ChartPieSlice, roles: ROLES.CFO_LIKE },
+      { to: "/app/cfo-action-queue", label: "Action queue", icon: Kanban, roles: ROLES.CFO_LIKE },
+      { to: "/app/readiness", label: "Process readiness matrix", icon: Table, roles: ROLES.CFO_LIKE },
+      { to: "/app/controller", label: "Controller dashboard", icon: Desktop, roles: ROLES.CFO_LIKE },
       { to: "/app/rollups", label: "Entity rollups", icon: TreeStructure, roles: ROLES.CFO_LIKE },
-      { to: "/app/executive-review", label: "Executive review", icon: ChartPieSlice, roles: ROLES.CFO_LIKE },
+      { to: "/app/executive-review", label: "Executive review", icon: IdentificationCard, roles: ROLES.CFO_LIKE },
     ],
   },
   {
     id: "finance-operations",
     title: "Finance Operations",
     items: [
-      { to: "/app/finance-operations/month-end-close", label: "Month-end close", icon: Pulse, roles: ROLES.CFO_LIKE },
+      { to: "/app/finance-operations/month-end-close", label: "Month-end close", icon: ClockCountdown, roles: ROLES.CFO_LIKE },
       { to: "/app/finance-operations/team-performance", label: "Finance team", icon: Users, roles: ROLES.CFO_LIKE },
-      { to: "/app/finance-operations/budget-master", label: "Budget master", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
-      { to: "/app/finance-operations/budget-vs-actual-dashboard", label: "Budget vs actual", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
-      { to: "/app/finance-operations/forecast-accuracy-dashboard", label: "Forecast accuracy", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
-      { to: "/app/finance-operations/fpa", label: "FP&A snapshot", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
+      { to: "/app/finance-operations/budget-master", label: "Budget master", icon: Coins, roles: ROLES.CFO_LIKE },
+      { to: "/app/finance-operations/budget-vs-actual-dashboard", label: "Budget vs actual", icon: ChartBar, roles: ROLES.CFO_LIKE },
+      { to: "/app/finance-operations/forecast-accuracy-dashboard", label: "Forecast accuracy", icon: TrendUp, roles: ROLES.CFO_LIKE },
+      { to: "/app/finance-operations/fpa", label: "FP&A snapshot", icon: SlidersHorizontal, roles: ROLES.CFO_LIKE },
       { to: "/app/audit", label: "Audit workspace", icon: Scales, roles: ROLES.CFO_LIKE },
     ],
   },
@@ -96,28 +148,28 @@ const CFO_GROUPS = [
     id: "financial-audit",
     title: "Financial Audit",
     items: [
-      { to: "/app/financial-audit/gl-audit-dashboard", label: "GL audit workbench", icon: ChartPieSlice, roles: ROLES.CFO_LIKE },
+      { to: "/app/financial-audit/gl-audit-dashboard", label: "GL audit workbench", icon: BookOpenText, roles: ROLES.CFO_LIKE },
       { to: "/app/financial-audit/journal-risk-dashboard", label: "Journal risk", icon: WarningCircle, roles: ROLES.CFO_LIKE },
       { to: "/app/financial-audit/reconciliations-dashboard", label: "Reconciliations", icon: ListChecks, roles: ROLES.CFO_LIKE },
       { to: "/app/financial-audit/bank-reconciliation-dashboard", label: "Bank reconciliation", icon: Wallet, roles: ROLES.CFO_LIKE },
-      { to: "/app/financial-audit/inventory-audit-dashboard", label: "Inventory audit", icon: Briefcase, roles: ROLES.CFO_LIKE },
-      { to: "/app/financial-audit/physical-verification-dashboard", label: "Physical verification", icon: Briefcase, roles: ROLES.CFO_LIKE },
-      { to: "/app/financial-audit/fixed-assets-capex-dashboard", label: "Fixed assets · CAPEX", icon: Briefcase, roles: ROLES.CFO_LIKE },
+      { to: "/app/financial-audit/inventory-audit-dashboard", label: "Inventory audit", icon: Package, roles: ROLES.CFO_LIKE },
+      { to: "/app/financial-audit/physical-verification-dashboard", label: "Physical verification", icon: Scan, roles: ROLES.CFO_LIKE },
+      { to: "/app/financial-audit/fixed-assets-capex-dashboard", label: "Fixed assets · CAPEX", icon: Buildings, roles: ROLES.CFO_LIKE },
       { to: "/app/audit-planning", label: "Audit planning", icon: CalendarBlank, roles: ROLES.CFO_LIKE },
-      { to: "/app/evidence", label: "Evidence explorer", icon: Graph, roles: ROLES.CFO_LIKE },
+      { to: "/app/evidence", label: "Evidence explorer", icon: FolderOpen, roles: ROLES.CFO_LIKE },
     ],
   },
   {
     id: "continuous-audit",
     title: "Continuous Audit",
     items: [
-      { to: "/app/executive-review?tab=assurance", label: "Continuous assurance", icon: Pulse, roles: ROLES.CFO_LIKE },
+      { to: "/app/executive-review?tab=assurance", label: "Continuous assurance", icon: SealCheck, roles: ROLES.CFO_LIKE },
       { to: "/app/continuous-audit/rules-engine-dashboard", label: "Rules engine", icon: Command, roles: ROLES.CFO_LIKE },
       { to: "/app/continuous-audit/vendor-risk-dashboard", label: "Vendor risk", icon: WarningCircle, roles: ROLES.CFO_LIKE },
-      { to: "/app/continuous-audit/three-way-match-dashboard", label: "Three-way match", icon: ListChecks, roles: ROLES.CFO_LIKE },
-      { to: "/app/continuous-audit/o2c-audit-dashboard", label: "O2C audit", icon: ChartPieSlice, roles: ROLES.CFO_LIKE },
-      { to: "/app/continuous-audit/credit-notes-dashboard", label: "Credit notes", icon: ChartPieSlice, roles: ROLES.CFO_LIKE },
-      { to: "/app/audit", label: "Controls & tests", icon: Scales, roles: ROLES.CFO_LIKE },
+      { to: "/app/continuous-audit/three-way-match-dashboard", label: "Three-way match", icon: GitBranch, roles: ROLES.CFO_LIKE },
+      { to: "/app/continuous-audit/o2c-audit-dashboard", label: "O2C audit", icon: ShoppingCart, roles: ROLES.CFO_LIKE },
+      { to: "/app/continuous-audit/credit-notes-dashboard", label: "Credit notes", icon: Receipt, roles: ROLES.CFO_LIKE },
+      { to: "/app/audit", label: "Controls & tests", icon: ListBullets, roles: ROLES.CFO_LIKE },
     ],
   },
   {
@@ -125,19 +177,19 @@ const CFO_GROUPS = [
     title: "Working Capital",
     items: [
       { to: "/app/working-capital", label: "WC dashboard", icon: Wallet, roles: ROLES.CFO_LIKE },
-      { to: "/app/working-capital/receivables", label: "Receivables · AR ageing", icon: Wallet, roles: ROLES.CFO_LIKE },
-      { to: "/app/working-capital/payables", label: "Payables · AP ageing", icon: Wallet, roles: ROLES.CFO_LIKE },
-      { to: "/app/working-capital/cash-conversion", label: "Cash conversion cycle", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
+      { to: "/app/working-capital/receivables", label: "Receivables · AR ageing", icon: CurrencyDollar, roles: ROLES.CFO_LIKE },
+      { to: "/app/working-capital/payables", label: "Payables · AP ageing", icon: ArrowsDownUp, roles: ROLES.CFO_LIKE },
+      { to: "/app/working-capital/cash-conversion", label: "Cash conversion cycle", icon: ArrowsClockwise, roles: ROLES.CFO_LIKE },
     ],
   },
   {
     id: "treasury",
     title: "Treasury",
     items: [
-      { to: "/app/treasury", label: "Treasury hub", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
-      { to: "/app/treasury/cash-forecast", label: "Cash forecast · 13-week", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
+      { to: "/app/treasury", label: "Treasury hub", icon: Bank, roles: ROLES.CFO_LIKE },
+      { to: "/app/treasury/cash-forecast", label: "Cash forecast · 13-week", icon: Clock, roles: ROLES.CFO_LIKE },
       { to: "/app/treasury/debt-investments-dashboard", label: "Debt & investments", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
-      { to: "/app/treasury/forex-exposure-dashboard", label: "Forex exposure", icon: ChartLineUp, roles: ROLES.CFO_LIKE },
+      { to: "/app/treasury/forex-exposure-dashboard", label: "Forex exposure", icon: Globe, roles: ROLES.CFO_LIKE },
       { to: "/app/connectors", label: "Bank / ERP connectors", icon: Plug, roles: ROLES.CFO_LIKE },
     ],
   },
@@ -146,8 +198,8 @@ const CFO_GROUPS = [
     title: "Compliance",
     items: [
       { to: "/app/compliance", label: "Compliance dashboard", icon: ShieldCheck, roles: ROLES.CFO_LIKE },
-      { to: "/app/compliance/rpt-dashboard", label: "Related party transactions", icon: Gavel, roles: ROLES.CFO_LIKE },
-      { to: "/app/compliance/legal-dashboard", label: "Legal notices & litigation", icon: Gavel, roles: ROLES.CFO_LIKE },
+      { to: "/app/compliance/rpt-dashboard", label: "Related party transactions", icon: Handshake, roles: ROLES.CFO_LIKE },
+      { to: "/app/compliance/legal-dashboard", label: "Legal notices & litigation", icon: Newspaper, roles: ROLES.CFO_LIKE },
     ],
   },
   {
@@ -155,11 +207,11 @@ const CFO_GROUPS = [
     title: "Risk Intelligence",
     items: [
       { to: "/app/risk-intelligence", label: "Risk intelligence", icon: WarningCircle, roles: ROLES.CFO_LIKE },
-      { to: "/app/risk-intelligence/risk-scoring-dashboard", label: "Risk scoring", icon: WarningCircle, roles: ROLES.CFO_LIKE },
-      { to: "/app/risk-intelligence/doa-dashboard", label: "Delegation of authority", icon: Scales, roles: ROLES.CFO_LIKE },
-      { to: "/app/risk-intelligence/policy-compliance-dashboard", label: "Policy compliance", icon: ShieldCheck, roles: ROLES.CFO_LIKE },
-      { to: "/app/risk-intelligence/user-access-sod-dashboard", label: "Access & SoD", icon: ShieldCheck, roles: ROLES.CFO_LIKE },
-      { to: "/app/risk-intelligence/master-data-quality-dashboard", label: "Master data quality", icon: UploadSimple, roles: ROLES.CFO_LIKE },
+      { to: "/app/risk-intelligence/risk-scoring-dashboard", label: "Risk scoring", icon: Target, roles: ROLES.CFO_LIKE },
+      { to: "/app/risk-intelligence/doa-dashboard", label: "Delegation of authority", icon: Scroll, roles: ROLES.CFO_LIKE },
+      { to: "/app/risk-intelligence/policy-compliance-dashboard", label: "Policy compliance", icon: Notebook, roles: ROLES.CFO_LIKE },
+      { to: "/app/risk-intelligence/user-access-sod-dashboard", label: "Access & SoD", icon: Key, roles: ROLES.CFO_LIKE },
+      { to: "/app/risk-intelligence/master-data-quality-dashboard", label: "Master data quality", icon: Database, roles: ROLES.CFO_LIKE },
     ],
   },
   {
@@ -168,18 +220,18 @@ const CFO_GROUPS = [
     items: [
       { to: "/app/my-cases", label: "My cases", icon: Briefcase, roles: ROLES.CFO_LIKE },
       { to: "/app/cases", label: "All cases", icon: ListChecks, roles: ROLES.CFO_LIKE },
-      { to: "/app/evidence/evidence-intelligence-dashboard", label: "Evidence intelligence", icon: Graph, roles: ROLES.CFO_LIKE },
-      { to: "/app/evidence", label: "Evidence explorer", icon: Graph, roles: ROLES.CFO_LIKE },
+      { to: "/app/evidence/evidence-intelligence-dashboard", label: "Evidence intelligence", icon: Cpu, roles: ROLES.CFO_LIKE },
+      { to: "/app/evidence", label: "Evidence explorer", icon: MagnifyingGlass, roles: ROLES.CFO_LIKE },
     ],
   },
   {
     id: "board-reporting",
     title: "Board Reporting",
     items: [
-      { to: "/app/executive-review", label: "CFO & Committee hub", icon: ChartPieSlice, roles: ROLES.CFO_LIKE },
-      { to: "/app/audit-committee", label: "Audit committee", icon: ChartPieSlice, roles: ROLES.CFO_LIKE },
+      { to: "/app/executive-review", label: "CFO & Committee hub", icon: UsersFour, roles: ROLES.CFO_LIKE },
+      { to: "/app/audit-committee", label: "Audit committee", icon: Gavel, roles: ROLES.CFO_LIKE },
       { to: "/app/board-reporting/report-automation-dashboard", label: "Report automation", icon: PresentationChart, roles: ROLES.CFO_LIKE },
-      { to: "/app/reporting-studio", label: "Reporting studio", icon: ClipboardText, roles: ROLES.CFO_LIKE },
+      { to: "/app/reporting-studio", label: "Reporting studio", icon: NotePencil, roles: ROLES.CFO_LIKE },
     ],
   },
   {
@@ -187,7 +239,7 @@ const CFO_GROUPS = [
     title: "AI Copilot",
     items: [
       { to: "/app/copilot", label: "Copilot workspace", icon: ChatCircleDots, roles: ROLES.CFO_LIKE },
-      { to: "/app/copilot/copilot-2-dashboard", label: "Copilot 2.0", icon: ChatCircleDots, roles: ROLES.CFO_LIKE },
+      { to: "/app/copilot/copilot-2-dashboard", label: "Copilot 2.0", icon: Robot, roles: ROLES.CFO_LIKE },
     ],
   },
 ];
@@ -210,7 +262,7 @@ function auditorNavGroups(user) {
   if (user.role === "Internal Auditor" || user.role === "External Auditor") {
     pin.push({ to: "/app/audit", label: "Audit workspace", icon: Scales, roles: ROLES.AUDITOR_BUNDLE });
   } else if (user.role === "Controller") {
-    pin.push({ to: "/app/controller", label: "Controller", icon: ChartPieSlice, roles: ROLES.AUDITOR_BUNDLE });
+    pin.push({ to: "/app/controller", label: "Controller", icon: Desktop, roles: ROLES.AUDITOR_BUNDLE });
   } else if (user.role === "Compliance Head") {
     pin.push({ to: "/app/compliance", label: "Compliance", icon: ShieldCheck, roles: ROLES.AUDITOR_BUNDLE });
   } else if (user.role === "Process Owner") {
@@ -220,58 +272,58 @@ function auditorNavGroups(user) {
   const cfoCc = [
     { to: "/app/cfo-command-center", label: "CFO overview", icon: SquaresFour, roles: ROLES.AUDITOR_BUNDLE },
     { to: "/app/cfo", label: "CFO Cockpit", icon: Gauge, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/cfo-action-queue", label: "Action queue", icon: ClipboardText, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/readiness", label: "Process readiness matrix", icon: Pulse, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/cfo-action-queue", label: "Action queue", icon: Kanban, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/readiness", label: "Process readiness matrix", icon: Table, roles: ROLES.AUDITOR_BUNDLE },
   ];
 
   const finAudit = [
     { to: "/app/financial-audit", label: "Financial audit hub", icon: Scales, roles: ROLES.AUDITOR_BUNDLE },
     { to: "/app/audit-planning", label: "Audit planning", icon: CalendarBlank, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/fs-hub", label: "FS Hub", icon: ChartPieSlice, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/fs-hub", label: "FS Hub", icon: Table, roles: ROLES.AUDITOR_BUNDLE },
     { to: "/app/fs-audit", label: "FS Audit", icon: ChartPieSlice, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/schedule", label: "Schedule", icon: ChartPieSlice, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/schedule", label: "Schedule", icon: Calendar, roles: ROLES.AUDITOR_BUNDLE },
     { to: "/app/working-papers", label: "Working papers", icon: FileText, roles: ROLES.AUDITOR_BUNDLE },
   ];
 
   const complianceIfc = [
-    { to: "/app/ifc", label: "IFC", icon: ShieldCheck, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/india-compliance", label: "Indian compliance", icon: ShieldCheck, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/ifc", label: "IFC", icon: ShieldPlus, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/india-compliance", label: "Indian compliance", icon: Flag, roles: ROLES.AUDITOR_BUNDLE },
     { to: "/app/compliance-command-center", label: "Compliance hub", icon: SquaresFour, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/compliance", label: "Compliance dashboard", icon: ShieldCheck, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/compliance", label: "Compliance dashboard", icon: ShieldWarning, roles: ROLES.AUDITOR_BUNDLE },
   ];
 
   const continuous = [
     { to: "/app/continuous-audit", label: "Continuous audit hub", icon: InfinityIcon, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/executive-review?tab=assurance", label: "Continuous assurance", icon: Pulse, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/executive-review?tab=assurance", label: "Continuous assurance", icon: SealCheck, roles: ROLES.AUDITOR_BUNDLE },
   ];
 
   const board = [
     { to: "/app/board-reporting", label: "Board reporting hub", icon: PresentationChart, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/audit-committee", label: "Audit committee", icon: ChartPieSlice, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/reporting-studio", label: "Reporting studio", icon: ClipboardText, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/reporting-tab", label: "Reporting tab", icon: ClipboardText, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/ca-command-center", label: "CA command center", icon: Command, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/audit-committee", label: "Audit committee", icon: UsersFour, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/reporting-studio", label: "Reporting studio", icon: NotePencil, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/reporting-tab", label: "Reporting tab", icon: Tabs, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/ca-command-center", label: "CA command center", icon: Student, roles: ROLES.AUDITOR_BUNDLE },
   ];
 
   const evidenceCases = [
-    { to: "/app/evidence-cases", label: "Evidence & cases hub", icon: Graph, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/cases", label: "All cases", icon: ListChecks, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/evidence", label: "Evidence explorer", icon: Graph, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/evidence-cases", label: "Evidence & cases hub", icon: Binoculars, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/cases", label: "All cases", icon: Folders, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/evidence", label: "Evidence explorer", icon: FileMagnifyingGlass, roles: ROLES.AUDITOR_BUNDLE },
   ];
 
   const ai = [
     { to: "/app/ai-copilot", label: "AI hub", icon: Sparkle, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/copilot", label: "Copilot", icon: ChatCircleDots, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/copilot", label: "Copilot", icon: ChatText, roles: ROLES.AUDITOR_BUNDLE },
   ];
 
   const wcTreasuryRisk = [
     { to: "/app/finance-operations", label: "Finance operations hub", icon: Factory, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/working-capital-command-center", label: "WC overview", icon: SquaresFour, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/working-capital-command-center", label: "WC overview", icon: House, roles: ROLES.AUDITOR_BUNDLE },
     { to: "/app/working-capital", label: "WC dashboard", icon: Wallet, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/treasury-command-center", label: "Treasury overview", icon: SquaresFour, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/treasury", label: "Treasury hub", icon: ChartLineUp, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/risk-intelligence-command-center", label: "Risk hub", icon: SquaresFour, roles: ROLES.AUDITOR_BUNDLE },
-    { to: "/app/risk-intelligence", label: "Risk intelligence", icon: WarningCircle, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/treasury-command-center", label: "Treasury overview", icon: Vault, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/treasury", label: "Treasury hub", icon: Bank, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/risk-intelligence-command-center", label: "Risk hub", icon: Hexagon, roles: ROLES.AUDITOR_BUNDLE },
+    { to: "/app/risk-intelligence", label: "Risk intelligence", icon: Crosshair, roles: ROLES.AUDITOR_BUNDLE },
   ];
 
   const groups = [];
@@ -300,11 +352,11 @@ const SUPER_ADMIN_GROUPS = [
       { to: "/app/super-admin", label: "User management", icon: Users, roles: ROLES.SUPER_ADMIN_ONLY },
       { to: "/app/admin", label: "Admin & governance", icon: GearSix, roles: ROLES.SUPER_ADMIN_ONLY },
       { to: "/app/admin/master-audit", label: "Master audit trail", icon: ClipboardText, roles: ROLES.SUPER_ADMIN_ONLY },
-      { to: "/app/admin/master-dq", label: "Master data quality", icon: ShieldCheck, roles: ROLES.SUPER_ADMIN_ONLY },
+      { to: "/app/admin/master-dq", label: "Master data quality", icon: Database, roles: ROLES.SUPER_ADMIN_ONLY },
       { to: "/app/integrations", label: "Integrations hub", icon: LinkSimple, roles: ROLES.SUPER_ADMIN_ONLY },
       { to: "/app/connectors", label: "Connectors", icon: Plug, roles: ROLES.SUPER_ADMIN_ONLY },
-      { to: "/app/approvals", label: "Approvals", icon: ShieldCheck, roles: ROLES.SUPER_ADMIN_ONLY },
-      { to: "/app/upload", label: "Ingest CSV", icon: UploadSimple, roles: ROLES.SUPER_ADMIN_ONLY },
+      { to: "/app/approvals", label: "Approvals", icon: CheckCircle, roles: ROLES.SUPER_ADMIN_ONLY },
+      { to: "/app/upload", label: "Ingest CSV", icon: CloudArrowUp, roles: ROLES.SUPER_ADMIN_ONLY },
     ],
   },
   {
@@ -312,7 +364,7 @@ const SUPER_ADMIN_GROUPS = [
     title: "Platform",
     items: [
       { to: "/app/rollups", label: "Entity rollups", icon: TreeStructure, roles: ROLES.SUPER_ADMIN_ONLY },
-      { to: "/app/governance", label: "Retention & legal hold", icon: Gavel, roles: ROLES.SUPER_ADMIN_ONLY },
+      { to: "/app/governance", label: "Retention & legal hold", icon: FileLock, roles: ROLES.SUPER_ADMIN_ONLY },
     ],
   },
   {
@@ -321,9 +373,9 @@ const SUPER_ADMIN_GROUPS = [
     items: [
       { to: "/app/cfo-command-center", label: "CFO module map", icon: SquaresFour, roles: ROLES.SUPER_ADMIN_ONLY },
       { to: "/app/cfo", label: "CFO cockpit (preview)", icon: Gauge, roles: ROLES.SUPER_ADMIN_ONLY },
-      { to: "/app/readiness", label: "Readiness matrix (preview)", icon: Pulse, roles: ROLES.SUPER_ADMIN_ONLY },
-      { to: "/app/risk-intelligence", label: "Risk intelligence (preview)", icon: WarningCircle, roles: ROLES.SUPER_ADMIN_ONLY },
-      { to: "/app/controller", label: "Controller (preview)", icon: ChartPieSlice, roles: ROLES.SUPER_ADMIN_ONLY },
+      { to: "/app/readiness", label: "Readiness matrix (preview)", icon: Table, roles: ROLES.SUPER_ADMIN_ONLY },
+      { to: "/app/risk-intelligence", label: "Risk intelligence (preview)", icon: Eye, roles: ROLES.SUPER_ADMIN_ONLY },
+      { to: "/app/controller", label: "Controller (preview)", icon: Desktop, roles: ROLES.SUPER_ADMIN_ONLY },
     ],
   },
 ];

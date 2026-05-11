@@ -2,18 +2,13 @@
 
 Verifies no regression to Phase 1 (12 controls, drill types invoice/payment/journal/vendor/user/control).
 """
-import os
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL")
-if not BASE_URL:
-    with open("/app/frontend/.env") as f:
-        for line in f:
-            if line.startswith("REACT_APP_BACKEND_URL"):
-                BASE_URL = line.split("=", 1)[1].strip().strip('"')
-                break
-assert BASE_URL
+from l4_http_common import resolve_react_app_backend_url
+
+BASE_URL = resolve_react_app_backend_url()
+assert BASE_URL, "Set REACT_APP_BACKEND_URL or apps/frontend/.env for HTTP tests."
 API = f"{BASE_URL.rstrip('/')}/api"
 
 CFO = {"email": "cfo@onetouch.ai", "password": "demo1234"}

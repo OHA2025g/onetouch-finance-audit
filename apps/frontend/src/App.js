@@ -203,7 +203,7 @@ export default function App() {
               {/* Roadmap aliases (Phase 11/26/27) */}
               <Route path="treasury/dashboard" element={<TreasuryPage />} />
               <Route path="treasury/cash-forecast" element={<CashForecast13WeekPage />} />
-              <Route path="treasury/forex-exposure" element={<TreasuryPage />} />
+              <Route path="treasury/forex-exposure" element={<ForexExposureWorkbenchPage />} />
               <Route path="treasury/forex-exposure-dashboard" element={<ForexExposureWorkbenchPage />} />
               <Route path="treasury/debt-investments-dashboard" element={<TreasuryDebtInvestmentsWorkbenchPage />} />
               <Route path="risk-intelligence-command-center" element={<ModuleHubPage hubKey="risk-intelligence" />} />
@@ -247,7 +247,7 @@ export default function App() {
               <Route path="evidence/:exceptionId" element={<EvidenceExplorer />} />
               {/* Roadmap aliases (Phase 34) */}
               <Route path="evidence/evidence-intelligence-dashboard" element={<EvidenceIntelligenceWorkbenchPage />} />
-              <Route path="evidence/document-intelligence" element={<EvidenceExplorer />} />
+              <Route path="evidence/document-intelligence" element={<EvidenceIntelligenceWorkbenchPage />} />
               <Route path="copilot/copilot-2-dashboard" element={<Copilot2WorkbenchPage />} />
               <Route path="copilot" element={<Copilot />} />
               <Route path="admin" element={<AdminConsole />} />
@@ -342,10 +342,10 @@ export default function App() {
               <Route path="risk-intelligence/user-access-sod-dashboard" element={<AccessSodWorkbenchPage />} />
               <Route path="risk-intelligence/master-data-quality-dashboard" element={<MasterDataQualityWorkbenchPage />} />
               <Route path="risk-intelligence/risk-scoring-dashboard" element={<RiskScoringWorkbenchPage />} />
-              <Route path="risk-intelligence/delegation-of-authority" element={<RiskIntelligencePage />} />
-              <Route path="risk-intelligence/policy-compliance" element={<RiskIntelligencePage />} />
-              <Route path="risk-intelligence/user-access-sod" element={<RiskIntelligencePage />} />
-              <Route path="risk-intelligence/master-data-quality" element={<RiskIntelligencePage />} />
+              <Route path="risk-intelligence/delegation-of-authority" element={<DoaWorkbenchPage />} />
+              <Route path="risk-intelligence/policy-compliance" element={<PolicyComplianceWorkbenchPage />} />
+              <Route path="risk-intelligence/user-access-sod" element={<AccessSodWorkbenchPage />} />
+              <Route path="risk-intelligence/master-data-quality" element={<MasterDataQualityWorkbenchPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

@@ -33,6 +33,8 @@ from app.routers.finance_rest_router import (
     treasury_router,
     budget_router,
     forecast_router,
+    srs_budget_vs_actual_router,
+    srs_forecast_vs_actual_router,
 )
 from app.routers.gl_router import router as gl_router
 from app.routers.journals_router import router as journals_router
@@ -99,7 +101,16 @@ def create_app() -> FastAPI:
         api.include_router(r)
 
     api.include_router(finance_team_router)
-    for fr in (wc_router, ar_router, ap_router, treasury_router, budget_router, forecast_router):
+    for fr in (
+        wc_router,
+        ar_router,
+        ap_router,
+        treasury_router,
+        srs_budget_vs_actual_router,
+        srs_forecast_vs_actual_router,
+        budget_router,
+        forecast_router,
+    ):
         api.include_router(fr)
     api.include_router(gl_router)
     api.include_router(bank_recon_router)

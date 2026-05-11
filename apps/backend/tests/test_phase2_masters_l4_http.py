@@ -12,18 +12,20 @@ from __future__ import annotations
 import os
 import time
 import uuid
-import requests
+
 import pytest
+import requests
+
+from l4_http_common import resolve_react_app_backend_url, wait_until_api_ready
 
 
-# L4 tests call the live API. CI sets this in docker-compose for the ``api`` service; locally set REACT_APP_BACKEND_URL
-# (e.g. http://127.0.0.1:8000) or these tests are skipped so ``pytest`` without a server does not fail collection.
-_L4_BASE = (os.environ.get("REACT_APP_BACKEND_URL") or "").strip()
+# L4 tests call the live API. CI sets REACT_APP_BACKEND_URL in docker-compose; locally use env or apps/frontend/.env.
+_L4_BASE = (os.environ.get("REACT_APP_BACKEND_URL") or "").strip() or (resolve_react_app_backend_url() or "")
 pytestmark = pytest.mark.skipif(
     not _L4_BASE,
-    reason="REACT_APP_BACKEND_URL not set — skip L4 HTTP contract tests",
+    reason="REACT_APP_BACKEND_URL not set and apps/frontend/.env missing — skip L4 HTTP contract tests",
 )
-BASE_URL = _L4_BASE or "http://127.0.0.1:8000"
+BASE_URL = _L4_BASE
 API = f"{BASE_URL.rstrip('/')}/api"
 
 
@@ -33,18 +35,8 @@ CREDS = {
 }
 
 def _wait_api(timeout_s: float = 60.0) -> None:
-    """Avoid flakiness: container may be restarting while pytest starts."""
-    deadline = time.time() + timeout_s
-    last_err: Exception | None = None
-    while time.time() < deadline:
-        try:
-            # Any response indicates the server is accepting connections.
-            requests.get(f"{API}/system/health", timeout=2)
-            return
-        except Exception as e:  # noqa: BLE001
-            last_err = e
-            time.sleep(0.5)
-    raise AssertionError(f"API not reachable within {timeout_s}s: {last_err}")
+    """Block until public ``GET /api/`` returns 200."""
+    wait_until_api_ready(API, timeout_s=timeout_s)
 
 
 def _login(email, password):

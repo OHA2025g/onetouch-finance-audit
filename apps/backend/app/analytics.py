@@ -10,6 +10,35 @@ from app.utils.timeutil import iso_utc
 SEVERITY_WEIGHT = {"critical": 1.0, "high": 0.7, "medium": 0.4, "low": 0.2}
 
 
+def _dedupe_top_risks(rows: List[Dict[str, Any]], *, limit: int = 10) -> List[Dict[str, Any]]:
+    """CFO cockpit should show one row per underlying finding, not one per raw Mongo document.
+
+    ``run_control`` deletes prior rows only when ``status == "open"``. Exceptions moved to
+    ``in_progress`` / case workflow persist, and later runs insert fresh ``open`` rows for the same
+    customer/source — producing identical titles and exposures in ``top_risks``. We keep the
+    highest severity×exposure row per (control_code, source_record_type, source_record_id).
+    """
+    rows = sorted(
+        rows,
+        key=lambda e: -(float(e.get("financial_exposure") or 0) * SEVERITY_WEIGHT.get(e.get("severity"), 0.3)),
+    )
+    seen: set[tuple] = set()
+    out: List[Dict[str, Any]] = []
+    for e in rows:
+        key = (
+            e.get("control_code") or "",
+            e.get("source_record_type") or "",
+            e.get("source_record_id") or "",
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(e)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _exception_dept_cc_clause(
     department_id: Optional[str],
     cost_center_id: Optional[str],
@@ -295,8 +324,7 @@ async def cfo_cockpit(
     top_risks: List[Dict[str, Any]] = []
     async for e in db.exceptions.find(tr_q, {"_id": 0}):
         top_risks.append(e)
-    top_risks.sort(key=lambda e: -(e["financial_exposure"] * SEVERITY_WEIGHT.get(e["severity"], 0.3)))
-    top_risks = top_risks[:10]
+    top_risks = _dedupe_top_risks(top_risks, limit=10)
 
     filters_applied = {k: v for k, v in {
         "entity_code": entity_code,

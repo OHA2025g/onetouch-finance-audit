@@ -4,9 +4,11 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    PIP_PREFER_BINARY=1
 
 COPY apps/backend/requirements.txt ./requirements.txt
+# Prefer binary wheels (NumPy / SciPy / scikit-learn) — pins in requirements.txt.
 RUN pip install --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ -r requirements.txt
 
 COPY apps/backend/ ./

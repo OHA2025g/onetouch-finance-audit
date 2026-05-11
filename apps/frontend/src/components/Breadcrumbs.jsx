@@ -36,7 +36,7 @@ export default function Breadcrumbs({ className }) {
     <nav
       aria-label="Breadcrumb"
       className={clsx(
-        "flex min-w-0 flex-wrap items-center gap-1 border-b border-zinc-200/80 px-4 py-2.5 text-[11px] font-medium tracking-wide text-muted-foreground dark:border-zinc-800/80 lg:px-8",
+        "flex min-w-0 flex-wrap items-center gap-1 border-b border-zinc-200/90 bg-gradient-to-b from-zinc-100/90 to-transparent px-4 py-2.5 text-[11px] font-medium tracking-wide text-muted-foreground backdrop-blur-[2px] dark:border-zinc-800/90 dark:from-zinc-950/80 dark:to-transparent lg:px-8",
         className
       )}
       data-testid="breadcrumbs"
@@ -59,7 +59,7 @@ export default function Breadcrumbs({ className }) {
             ) : (
               <Link
                 to={c.to}
-                className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                className="shrink-0 rounded-none border border-transparent px-1.5 py-0.5 text-muted-foreground transition-[color,background-color,border-color,box-shadow] hover:border-primary/20 hover:bg-primary/[0.06] hover:text-foreground hover:shadow-sm"
               >
                 {idx === 0 ? (
                   <span className="inline-flex items-center gap-1">

@@ -29,11 +29,19 @@ jobs:
             sleep 2
           done
           exit 1
+      - name: L4 HTTP test prerequisites (REACT_APP_BACKEND_URL + in-container ping)
+        run: |
+          docker compose exec -T api sh -ec '
+            set -e
+            test -n "${REACT_APP_BACKEND_URL:-}" || { echo "REACT_APP_BACKEND_URL missing on api service"; exit 1; }
+            curl -sfS "${REACT_APP_BACKEND_URL}/api/" >/dev/null
+            echo "OK: ${REACT_APP_BACKEND_URL}/api/"
+          '
       - name: compileall
         run: docker compose exec -T api python -m compileall -q /app/app
-      # L4 HTTP contract tests (e.g. test_phase2_masters_l4_http.py) require REACT_APP_BACKEND_URL; docker-compose sets
-      # it to http://127.0.0.1:8000 on the api service so pytest can call the same container's API.
-      - name: pytest
+      # L4 HTTP contract tests (test_phase*_l4_http.py, backend_test.py) resolve the API via REACT_APP_BACKEND_URL
+      # (set in docker-compose) or /app/frontend/.env; readiness uses public GET /api/ (see tests/l4_http_common.py).
+      - name: pytest (unit + L4 HTTP contract suite)
         run: docker compose exec -T api pytest /app/tests -q
       - name: OpenAPI schema
         run: docker compose exec -T api python /app/scripts/export_openapi.py > openapi.json

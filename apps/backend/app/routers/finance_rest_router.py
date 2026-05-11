@@ -1303,3 +1303,39 @@ async def budget_unlock(budget_id: str, current=Depends(get_current_user)):
     )
     await audit_log(current["email"], "budget_unlock", "budget_version", budget_id, {})
     return {"status": "ok", "matched": res.matched_count, "modified": res.modified_count, "as_of": as_of_now()}
+
+
+# --- SRS top-level aliases (integrator docs) — same payloads as nested routes ---
+srs_budget_vs_actual_router = APIRouter(prefix="/budget-vs-actual", tags=["budget-srs-alias"])
+
+
+@srs_budget_vs_actual_router.get("")
+async def srs_get_budget_vs_actual(
+    entity_code: Optional[str] = Query(None),
+    period_ym: Optional[str] = Query(None),
+    department_id: Optional[str] = Query(None),
+    cost_center_id: Optional[str] = Query(None),
+    current=Depends(get_current_user),
+):
+    """SRS: ``GET /api/budget-vs-actual`` — canonical: ``GET /api/budget/budget-vs-actual``."""
+    kw = await _enforce_scope(current, entity_code, period_ym, department_id, cost_center_id)
+    fpa = await fpa_dashboard(db, **kw)
+    return {
+        "as_of": as_of_now(),
+        "source": "analytics.fpa_dashboard",
+        "data": fpa,
+        "canonical_paths": ["/api/budget/budget-vs-actual", "/api/budget/vs-actual"],
+    }
+
+
+srs_forecast_vs_actual_router = APIRouter(prefix="/forecast-vs-actual", tags=["forecast-srs-alias"])
+
+
+@srs_forecast_vs_actual_router.get("")
+async def srs_get_forecast_vs_actual(
+    entity_code: Optional[str] = Query(None),
+    period_ym: Optional[str] = Query(None),
+    current=Depends(get_current_user),
+):
+    """SRS: ``GET /api/forecast-vs-actual`` — canonical: ``GET /api/forecast/vs-actual``."""
+    return await forecast_vs_actual(entity_code=entity_code, period_ym=period_ym, current=current)

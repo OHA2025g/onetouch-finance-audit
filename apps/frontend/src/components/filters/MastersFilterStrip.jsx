@@ -8,8 +8,10 @@ import { useMastersFilters } from "../../lib/MastersFilterContext";
 
 /**
  * Compact inline strip — same URL-synced state as {@link MastersFilterBar}.
+ *
+ * @param {React.ReactNode} [extraFilters] — Optional trailing controls (e.g. process facet) kept on the same row.
  */
-export default function MastersFilterStrip({ className = "" }) {
+export default function MastersFilterStrip({ className = "", extraFilters = null }) {
   const {
     entityCode,
     periodYm,
@@ -33,7 +35,7 @@ export default function MastersFilterStrip({ className = "" }) {
         <div className="crt-overline text-muted-foreground">Reporting Context · URL-Synced</div>
         <button
           type="button"
-          className="crt-num rounded-sm border border-zinc-300 bg-white px-2 py-1 text-[9px] tracking-wide text-muted-foreground hover:text-foreground dark:border-zinc-600 dark:bg-zinc-900"
+          className="crt-num shrink-0 rounded-none border border-zinc-300 bg-white px-2 py-1 text-[9px] tracking-wide text-muted-foreground hover:text-foreground dark:border-zinc-600 dark:bg-zinc-900"
           onClick={() => {
             clearAll();
             toast.message("Context cleared");
@@ -42,19 +44,36 @@ export default function MastersFilterStrip({ className = "" }) {
           Clear
         </button>
       </div>
-      <div className="flex flex-wrap items-end gap-3 md:gap-4">
-        <EntityFilter value={entityCode} onChange={setEntityCode} />
-        <PeriodFilter value={periodYm} onChange={setPeriodYm} />
-        <DepartmentFilter
-          entityCode={entityForChildren}
-          value={departmentId}
-          onChange={setDepartmentId}
-        />
-        <CostCenterFilter
-          entityCode={entityForChildren}
-          value={costCenterId}
-          onChange={setCostCenterId}
-        />
+      <div
+        className={`grid w-full min-w-0 grid-cols-2 items-end gap-2 pb-0.5 sm:grid-cols-3 md:gap-3 ${
+          extraFilters ? "md:grid-cols-5" : "md:grid-cols-4"
+        }`}
+      >
+        <div className="min-w-0">
+          <EntityFilter variant="strip" value={entityCode} onChange={setEntityCode} />
+        </div>
+        <div className="min-w-0">
+          <PeriodFilter variant="strip" value={periodYm} onChange={setPeriodYm} />
+        </div>
+        <div className="min-w-0">
+          <DepartmentFilter
+            variant="strip"
+            entityCode={entityForChildren}
+            value={departmentId}
+            onChange={setDepartmentId}
+          />
+        </div>
+        <div className="min-w-0">
+          <CostCenterFilter
+            variant="strip"
+            entityCode={entityForChildren}
+            value={costCenterId}
+            onChange={setCostCenterId}
+          />
+        </div>
+        {extraFilters ? (
+          <div className="flex min-w-0 flex-wrap items-end gap-2">{extraFilters}</div>
+        ) : null}
       </div>
     </div>
   );

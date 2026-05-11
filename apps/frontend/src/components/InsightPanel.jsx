@@ -30,11 +30,11 @@ const PRIORITY_COLOR = {
   P3: "hsl(var(--muted-foreground))",
 };
 
-export default function InsightPanel({ section, title = "AI Insights" }) {
+export default function InsightPanel({ section, title = "AI Insights", defaultCollapsed = false }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(Boolean(defaultCollapsed));
   const masterParams = useDashboardFilterParams();
 
   const load = useCallback(

@@ -7,7 +7,8 @@ export function PageShell({ children, className, maxWidth = "max-w-[1700px]" }) 
   return (
     <div
       className={clsx(
-        "min-h-full bg-zinc-50 text-foreground dark:bg-zinc-950 dark:text-foreground",
+        "min-h-full bg-transparent text-foreground dark:text-foreground",
+        "motion-safe:animate-[fade-up_0.35s_ease-out_both]",
         "p-6 lg:p-8",
         maxWidth,
         className
@@ -21,13 +22,16 @@ export function PageShell({ children, className, maxWidth = "max-w-[1700px]" }) 
 
 export function PageHeader({ kicker, title, subtitle, right, icon, className }) {
   return (
-    <div className={clsx("mb-6", className)} data-testid="page-header">
+    <div className={clsx("mb-8 border-b border-zinc-200/90 pb-6 dark:border-zinc-800/90", className)} data-testid="page-header">
       {kicker && <div className="crt-overline text-muted-foreground">{toProperHeadingLabel(kicker)}</div>}
       <div className="mt-2 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="font-display text-3xl lg:text-4xl text-foreground tracking-tight flex items-center gap-2 min-w-0">
+          <h1 className="font-display text-3xl lg:text-4xl text-foreground tracking-tight flex items-center gap-3 min-w-0">
             {icon ? (
-              <span className="crt-card inline-flex h-10 w-10 items-center justify-center rounded-sm border p-0">
+              <span
+                className="crt-card inline-flex h-11 w-11 shrink-0 items-center justify-center border border-l-[3px] border-l-primary p-0 shadow-sm"
+                aria-hidden
+              >
                 {icon}
               </span>
             ) : null}
@@ -59,9 +63,12 @@ export function SectionCard({
   const showBody = !collapsible || !collapsed;
 
   return (
-    <section className={clsx("crt-card overflow-hidden", className)} data-testid={dataTestId || "section-card"}>
+    <section
+      className={clsx("crt-card section-card group overflow-hidden", className)}
+      data-testid={dataTestId || "section-card"}
+    >
       {showHeader && (
-        <div className="flex items-start justify-between gap-4 border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
+        <div className="flex items-start justify-between gap-4 border-b border-zinc-200 bg-zinc-50/80 px-5 py-4 transition-colors group-hover:bg-zinc-100/90 dark:border-zinc-800 dark:bg-zinc-900/40 dark:group-hover:bg-zinc-900/70">
           <div className="min-w-0">
             {kicker ? <div className="crt-overline text-muted-foreground">{toProperHeadingLabel(kicker)}</div> : null}
             {title ? (
@@ -80,7 +87,7 @@ export function SectionCard({
                 type="button"
                 onClick={() => setCollapsed((c) => !c)}
                 title={collapsed ? "Expand" : "Collapse"}
-                className="crt-card flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+                className="crt-card flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
                 data-testid={collapseTestId || "section-card-collapse"}
               >
                 {collapsed ? <CaretDown size={12} /> : <CaretUp size={12} />}

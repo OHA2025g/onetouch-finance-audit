@@ -7,11 +7,17 @@ module.exports = {
   ],
   theme: {
   	extend: {
+  		/* Product rule: no rounded corners — all radii resolve to 0 */
   		borderRadius: {
-  			/* --radius is 0.125rem (2px); keep radii non-negative */
-  			lg: 'var(--radius)',
-  			md: 'max(0px, calc(var(--radius) - 1px))',
-  			sm: '0px'
+  			none: "0",
+  			sm: "0",
+  			DEFAULT: "0",
+  			md: "0",
+  			lg: "0",
+  			xl: "0",
+  			"2xl": "0",
+  			"3xl": "0",
+  			full: "0",
   		},
   		colors: {
   			background: 'hsl(var(--background))',

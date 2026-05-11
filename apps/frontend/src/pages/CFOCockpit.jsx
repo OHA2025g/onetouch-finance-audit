@@ -372,37 +372,45 @@ export default function CFOCockpit() {
           }
         />
 
-        <MastersFilterStrip className="mb-4" />
+        <MastersFilterStrip
+          className="mb-4"
+          extraFilters={
+            <>
+              {/* Process-only facet: heatmap / top risks payload is multi-entity; this narrows client-side. */}
+              <label className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className="crt-overline text-muted-foreground">Process view</span>
+                <select
+                  value={processFilter}
+                  onChange={(e) => setProcessFilter(e.target.value)}
+                  className="crt-num h-9 min-w-0 w-full max-w-full rounded-none border border-zinc-300 bg-white px-3 text-xs uppercase tracking-wider text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+                  data-testid="process-filter"
+                >
+                  <option value="all">All processes</option>
+                  {processes.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {processFilter !== "all" ? (
+                <button
+                  type="button"
+                  onClick={() => setProcessFilter("all")}
+                  className="crt-num h-9 shrink-0 self-end rounded-none border border-zinc-300 bg-white px-3 text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:bg-zinc-50 hover:text-foreground dark:border-zinc-600 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                  data-testid="clear-process-filter"
+                >
+                  Clear process
+                </button>
+              ) : null}
+            </>
+          }
+        />
         {(entityCode || periodExplicit || departmentId || costCenterId) && (
           <p className="crt-num mb-4 text-[10px] uppercase tracking-wider text-muted-foreground">
             KPIs and server lists below follow this reporting context (Phase 12).
           </p>
         )}
-
-        {/* Process-only facet (heatmap / top risks are still multi-entity in payload; this narrows the view client-side). */}
-        <div className="mb-6 hidden flex-wrap items-center gap-2 lg:flex">
-          <span className="crt-overline inline-flex h-9 items-center rounded-sm border border-zinc-200 bg-white px-3 text-muted-foreground dark:border-zinc-700 dark:bg-zinc-900/60">
-            Process view
-          </span>
-          <select
-            value={processFilter}
-            onChange={(e) => setProcessFilter(e.target.value)}
-            className="crt-num h-9 rounded-sm border border-zinc-300 bg-white px-3 text-xs uppercase tracking-wider text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
-            data-testid="process-filter"
-          >
-          <option value="all">All processes</option>
-          {processes.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-          {processFilter !== "all" && (
-            <button
-              type="button"
-              onClick={() => setProcessFilter("all")}
-              className="crt-num h-9 rounded-sm border border-zinc-300 bg-white px-4 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-zinc-50 hover:text-foreground dark:border-zinc-600 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-            >
-              Clear process
-            </button>
-          )}
-        </div>
 
       {/* Mobile filter drawer */}
       {filtersOpen && (
@@ -559,6 +567,7 @@ export default function CFOCockpit() {
           subtitle="Prioritized items across cases, exceptions, approvals, and integrations."
           className="mb-8"
           collapsible
+          defaultCollapsed
           collapseTestId="cfo-cockpit-action-queue-collapse"
           right={
             <button
@@ -652,7 +661,7 @@ export default function CFOCockpit() {
           )}
         </SectionCard>
 
-        <InsightPanel section="cfo" title="CFO AI Insights" />
+        <InsightPanel section="cfo" title="CFO AI Insights" defaultCollapsed />
 
         {/* Two-column: Heatmap + AI narrative */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
