@@ -1,7 +1,7 @@
 ## One Touch Audit â€” API container (repo root)
 ##
 ## This repo already contains per-app Dockerfiles:
-## - apps/backend/Dockerfile (build context: apps/backend — Easypanel / narrow CI)
+## - apps/backend/Dockerfile (build context: apps/; Easypanel: Build path apps, File backend/Dockerfile)
 ## - apps/frontend/Dockerfile
 ##
 ## This root Dockerfile exists so `docker build .` works out of the box

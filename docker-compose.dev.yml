@@ -13,8 +13,8 @@ services:
 
   api:
     build:
-      context: ./apps/backend
-      dockerfile: Dockerfile
+      context: ./apps
+      dockerfile: backend/Dockerfile
     environment:
       MONGO_URL: "mongodb://mongo:27017"
       DB_NAME: "onetouch_audit"
