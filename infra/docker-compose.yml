@@ -34,8 +34,8 @@ services:
 
   web:
     build:
-      context: ../apps/frontend
-      dockerfile: Dockerfile
+      context: ../apps
+      dockerfile: frontend/Dockerfile
       args:
         # Use nginx reverse proxy for /api in Docker so login works locally.
         REACT_APP_BACKEND_URL: ""

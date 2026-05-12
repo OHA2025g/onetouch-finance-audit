@@ -1,0 +1,22 @@
+# Build context is `apps/` for apps/backend/Dockerfile and apps/frontend/Dockerfile.
+# Keep uploads small and avoid leaking local env files into images.
+
+# Frontend
+frontend/node_modules
+frontend/build
+frontend/dist
+frontend/coverage
+frontend/.cache
+frontend/playwright-report
+frontend/test-results
+frontend/.env
+frontend/.env.*
+
+# Backend
+backend/__pycache__
+backend/**/__pycache__
+backend/.pytest_cache
+backend/.venv
+backend/venv
+backend/.env
+backend/.env.*
