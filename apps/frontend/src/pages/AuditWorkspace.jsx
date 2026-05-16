@@ -353,37 +353,6 @@ export default function AuditWorkspace() {
           />
         </div>
 
-        <AuditChartsRow
-          summary={summary}
-          trends={data.trends}
-          trendDays={trendDays}
-          onTrendDaysChange={setTrendDays}
-          onSelectControl={selectControl}
-          onSelectProcess={selectControlByProcess}
-        />
-
-        {data.recent_runs?.length ? (
-          <SectionCard className="mb-4" kicker="ACTIVITY" title="Latest test runs" bodyClassName="p-4">
-            <div className="space-y-1" data-testid="audit-recent-runs-strip">
-              {data.recent_runs.slice(0, 6).map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  className="crt-num flex w-full items-center justify-between rounded-sm border border-zinc-200 px-3 py-2 text-left text-xs hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900/60"
-                  onClick={() => r.control_id && selectControl(r.control_id)}
-                >
-                  <span className="text-foreground">
-                    {r.control_code || r.control_id} · {fmtDateTime(r.run_ts)}
-                  </span>
-                  <span className={r.exceptions_count > 0 ? "text-[hsl(var(--chart-3))]" : "text-[hsl(var(--chart-4))]"}>
-                    {r.exceptions_count ?? 0} exc
-                  </span>
-                </button>
-              ))}
-            </div>
-          </SectionCard>
-        ) : null}
-
         <InsightPanel section="audit" title="Audit Workspace · AI Insights" />
 
         <div className="sticky top-0 z-20 -mx-1 mb-4 border-b border-zinc-200/80 bg-background/95 px-1 pb-1 backdrop-blur dark:border-zinc-800/80">
@@ -740,6 +709,38 @@ export default function AuditWorkspace() {
           </SectionCard>
           </div>
         </div>
+
+        <AuditChartsRow
+          summary={summary}
+          trends={data.trends}
+          trendDays={trendDays}
+          onTrendDaysChange={setTrendDays}
+          onSelectControl={selectControl}
+          onSelectProcess={selectControlByProcess}
+        />
+
+        {data.recent_runs?.length ? (
+          <SectionCard className="mb-4" kicker="ACTIVITY" title="Latest test runs" bodyClassName="p-4">
+            <div className="space-y-1" data-testid="audit-recent-runs-strip">
+              {data.recent_runs.slice(0, 6).map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  className="crt-num flex w-full items-center justify-between rounded-sm border border-zinc-200 px-3 py-2 text-left text-xs hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900/60"
+                  onClick={() => r.control_id && selectControl(r.control_id)}
+                >
+                  <span className="text-foreground">
+                    {r.control_code || r.control_id} · {fmtDateTime(r.run_ts)}
+                  </span>
+                  <span className={r.exceptions_count > 0 ? "text-[hsl(var(--chart-3))]" : "text-[hsl(var(--chart-4))]"}>
+                    {r.exceptions_count ?? 0} exc
+                  </span>
+                </button>
+              ))}
+            </div>
+          </SectionCard>
+        ) : null}
+
       </div>
     </PageShell>
   );
