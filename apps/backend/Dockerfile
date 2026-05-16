@@ -1,3 +1,7 @@
+# Build context must be the monorepo `apps/` directory (parent of `backend/`), e.g.:
+#   docker build -f apps/backend/Dockerfile apps
+# Easypanel: Build path = /apps/ (or apps), File = backend/Dockerfile
+# Full-repo API image: use the Dockerfile at the repository root instead.
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -7,11 +11,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
     PIP_PREFER_BINARY=1
 
-COPY apps/backend/requirements.txt ./requirements.txt
+COPY backend/requirements.txt ./requirements.txt
 # Prefer binary wheels (NumPy / SciPy / scikit-learn) — pins in requirements.txt.
 RUN pip install --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ -r requirements.txt
 
-COPY apps/backend/ ./
+COPY backend/ ./
 
 # Compatibility for integration tests that read /app/frontend/.env inside the api container.
 # Point them at the API service directly to avoid nginx startup timing.
@@ -20,4 +24,3 @@ RUN mkdir -p /app/frontend && printf "REACT_APP_BACKEND_URL=http://127.0.0.1:800
 EXPOSE 8000
 
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
-

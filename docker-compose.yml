@@ -34,8 +34,8 @@ services:
 
   web:
     build:
-      context: ./apps/frontend
-      dockerfile: Dockerfile
+      context: ./apps
+      dockerfile: frontend/Dockerfile
       args:
         # Nginx serves static files only (no /api proxy). Browser must reach API on the host.
         REACT_APP_BACKEND_URL: "http://localhost:8000"
