@@ -25,6 +25,8 @@ test.describe("Phase 15 — GL audit workbench (PR-55)", () => {
     await expect(page.locator('[data-testid="gl-audit-page"][data-gl-audit-surface="true"]')).toBeVisible();
     await expect(page.getByTestId("gl-kpi-txn-count")).toBeVisible();
     await expect(page.getByTestId("gl-accounts-table")).toBeVisible();
+    await expect(page.getByTestId("gl-movement-section")).toBeVisible();
+    await expect(page.getByTestId("gl-anomalies-section")).toBeVisible();
   });
 
   test("direct gl-audit-dashboard loads GL ladder", async ({ page }) => {
@@ -33,5 +35,7 @@ test.describe("Phase 15 — GL audit workbench (PR-55)", () => {
     await expect(page.getByTestId("gl-audit-page")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('[data-testid="gl-audit-page"][data-gl-audit-surface="true"]')).toBeVisible();
     await expect(page.getByTestId("gl-kpi-total-amount")).toBeVisible();
+    await expect(page.getByTestId("gl-movement-section")).toBeVisible();
+    await expect(page.getByTestId("gl-anomalies-section")).toBeVisible();
   });
 });

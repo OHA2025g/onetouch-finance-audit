@@ -41,6 +41,31 @@ def _h(tok: str) -> dict:
 
 
 class TestBankReconContracts:
+    def test_summary_endpoint(self, token):
+        r = requests.get(f"{API}/bank-recon/summary", headers=_h(token), params={"entity_code": "US-HQ"}, timeout=30)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert "kpis" in body
+        assert "as_of" in body
+
+    def test_upload_csv_and_get_detail(self, token):
+        up = requests.post(
+            f"{API}/bank-recon/upload-statement/csv",
+            headers=_h(token),
+            json={
+                "entity": "US-HQ",
+                "bank_account_id": "BA-CSV",
+                "statement_period": "2026-05",
+                "csv_text": "date,amount,direction,reference\n2026-05-01,99,outbound,CSV-REF-1\n",
+            },
+            timeout=30,
+        )
+        assert up.status_code == 200, up.text
+        st_id = up.json()["statement_id"]
+        detail = requests.get(f"{API}/bank-recon/{st_id}", headers=_h(token), timeout=30)
+        assert detail.status_code == 200, detail.text
+        assert detail.json().get("statement", {}).get("id") == st_id
+
     def test_upload_list_match_unmatched_classify_signoff(self, token):
         up = requests.post(
             f"{API}/bank-recon/upload-statement",

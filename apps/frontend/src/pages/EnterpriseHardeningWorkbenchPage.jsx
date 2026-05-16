@@ -11,6 +11,30 @@ import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, Dat
 import WaveProgramDeliveryPanel from "../components/WaveProgramDeliveryPanel";
 import { useDashboardFilterParams } from "../lib/useDashboardFilterParams";
 
+function eh40ScopeLabel(row) {
+  if (!row) return "—";
+  if (row.scope_label) return row.scope_label;
+  if (row.entity_code != null && String(row.entity_code).trim() !== "") return String(row.entity_code);
+  return "ALL ENTITIES";
+}
+
+function eh40Snapshot(label, row) {
+  if (!row) return "—";
+  if (label === "RPT register") {
+    return `${row.related_parties_count ?? 0} parties · ${row.rpt_transactions_count ?? 0} txns`;
+  }
+  if (label === "DOA rules") {
+    return `${row.rules_count ?? 0} rules · ${row.matrix_rows ?? 0} matrix rows`;
+  }
+  if (label === "SoD campaigns") {
+    return `${row.campaigns_total ?? 0} campaign(s)`;
+  }
+  if (label === "MDQ summary") {
+    return `${row.open_findings ?? 0} open findings`;
+  }
+  return "—";
+}
+
 export default function EnterpriseHardeningWorkbenchPage() {
   const { user } = useAuth();
   const { drillToTarget } = useWorkbenchRowDrill();
@@ -115,16 +139,17 @@ export default function EnterpriseHardeningWorkbenchPage() {
         {govDepth ? (
           <SectionCard
             kicker="COMPLIANCE DEPTH · L4"
-            title="Governance API stubs — query uses masters entity_code when set (Super Admin parity)"
+            title="Governance depth APIs — live counts (masters entity_code when set)"
             bodyClassName="p-0"
             className="mb-6"
           >
-            <DataTable className="rounded-none border-0 bg-transparent" maxHeightClassName="max-h-[200px]" testId="eh40-gov-depth-table">
+            <DataTable className="rounded-none border-0 bg-transparent" maxHeightClassName="max-h-[240px]" testId="eh40-gov-depth-table">
               <DataTableHead>
                 <tr>
                   <DataTableTh>Surface</DataTableTh>
-                  <DataTableTh>Entity echoed</DataTableTh>
-                  <DataTableTh>Note</DataTableTh>
+                  <DataTableTh>Scope</DataTableTh>
+                  <DataTableTh>Live snapshot</DataTableTh>
+                  <DataTableTh>Summary</DataTableTh>
                 </tr>
               </DataTableHead>
               <DataTableBody>
@@ -136,8 +161,9 @@ export default function EnterpriseHardeningWorkbenchPage() {
                 ].map(({ key, label, row }) => (
                   <DataTableRow key={key} testId={`eh40-gov-depth-${key}`}>
                     <DataTableTd className="crt-num text-xs text-muted-foreground">{label}</DataTableTd>
-                    <DataTableTd className="crt-num text-xs">{row?.entity_code ?? "—"}</DataTableTd>
-                    <DataTableTd className="text-xs text-muted-foreground max-w-[480px] truncate" title={row?.note}>
+                    <DataTableTd className="crt-num text-xs text-foreground">{eh40ScopeLabel(row)}</DataTableTd>
+                    <DataTableTd className="crt-num text-xs text-foreground">{eh40Snapshot(label, row)}</DataTableTd>
+                    <DataTableTd className="text-xs text-muted-foreground max-w-[360px] truncate" title={row?.note}>
                       {row?.note || "—"}
                     </DataTableTd>
                   </DataTableRow>

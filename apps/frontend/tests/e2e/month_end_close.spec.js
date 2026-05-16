@@ -34,6 +34,10 @@ test.describe("Phase 6 — Month-end close surface (PR-46)", () => {
     if (await cycleLink.isVisible({ timeout: 10_000 }).catch(() => false)) {
       await cycleLink.click();
       await expect(page.getByTestId("close-tasks-table")).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId("close-activity-timeline")).toBeVisible({ timeout: 30_000 });
+      await expect(
+        page.getByTestId("close-activity-table").or(page.getByTestId("close-activity-empty")),
+      ).toBeVisible({ timeout: 30_000 });
     }
   });
 });

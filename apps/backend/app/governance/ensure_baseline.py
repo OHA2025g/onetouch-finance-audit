@@ -83,7 +83,29 @@ def _fx_rates() -> List[Dict[str, Any]]:
         {"id": f"fx-{uuid.uuid4().hex[:6]}", "base": "USD", "quote": "EUR", "rate": 0.92, "as_of": now, "source": "baseline"},
         {"id": f"fx-{uuid.uuid4().hex[:6]}", "base": "USD", "quote": "INR", "rate": 0.012, "as_of": now, "source": "baseline"},
         {"id": f"fx-{uuid.uuid4().hex[:6]}", "base": "USD", "quote": "SGD", "rate": 0.74, "as_of": now, "source": "baseline"},
+        {"id": f"fx-{uuid.uuid4().hex[:6]}", "base": "USD", "quote": "GBP", "rate": 1.27, "as_of": now, "source": "baseline"},
     ]
+
+
+async def ensure_reporting_fx_pairs(db) -> None:
+    """Upsert standard USD-base FX pairs so GBP/SGD/etc. exist even when rates were seeded earlier."""
+    now = iso_utc(datetime.now(timezone.utc))
+    pairs = [
+        ("USD", "USD", 1.0),
+        ("USD", "EUR", 0.92),
+        ("USD", "INR", 0.012),
+        ("USD", "SGD", 0.74),
+        ("USD", "GBP", 1.27),
+    ]
+    for base, quote, rate in pairs:
+        await db.reporting_currency_rates.update_one(
+            {"base": base, "quote": quote},
+            {
+                "$set": {"rate": rate, "as_of": now, "source": "baseline"},
+                "$setOnInsert": {"id": f"fx-{base}-{quote}-baseline"},
+            },
+            upsert=True,
+        )
 
 
 async def ensure_governance_baseline(db) -> Dict[str, int]:
@@ -101,6 +123,7 @@ async def ensure_governance_baseline(db) -> Dict[str, int]:
     if not await db.reporting_currency_rates.count_documents({}):
         await db.reporting_currency_rates.insert_many(_fx_rates())
         out["reporting_currency_rates"] = len(_fx_rates())
+    await ensure_reporting_fx_pairs(db)
     if not await db.retention_policies.count_documents({}):
         await db.retention_policies.insert_many(_retention_policies())
         out["retention_policies"] = len(_retention_policies())

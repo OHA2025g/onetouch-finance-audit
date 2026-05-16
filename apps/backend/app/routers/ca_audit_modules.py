@@ -37,6 +37,7 @@ from app.services import racm_service as racm_svc
 from app.services import ca_india_compliance_engine as ind_ce
 from app.services import ca_report_opinion_engine as rpt_eng
 from app.services import ca_executive_advisory as exec_adv
+from app.services import ca_executive_review_service as exec_rev
 from app.services import ca_engagement_integration as eng_int
 from app.services.ca_audit_domain import (
     compute_benchmark_options,
@@ -2023,7 +2024,10 @@ async def export_report(
 async def gen_mgmt_letter(request: Request, engagement_id: str, current=Depends(get_current_user)):
     await _engagement_or_404(engagement_id, current=current, request=request)
     obs = [o async for o in db.ca_audit_observations.find({"engagement_id": engagement_id}, {"_id": 0})]
-    text = "Management letter (demo): address open observations and remediation timelines.\n" + "\n".join(f"- {o['title']}" for o in obs[:10])
+    text = (
+        "Management letter (draft): address open observations and remediation timelines.\n"
+        + "\n".join(f"- {o.get('title', 'Observation')}" for o in obs[:10])
+    )
     doc = {"id": str(uuid.uuid4()), "engagement_id": engagement_id, "text": text, "created_at": _now()}
     await db.ca_management_letters.insert_one(dict(doc))
     return doc
@@ -2059,6 +2063,7 @@ async def ca_dashboard(request: Request, engagement_id: str, current=Depends(get
     """CA-grade consolidated dashboard: tiles, assurance scores, integration map, CFO advisory copy."""
     eng = await _engagement_or_404(engagement_id, current=current, request=request)
     scores = await _compute_continuous_assurance(engagement_id, eng)
+    executive_review_kpis = await exec_rev.build_executive_review_kpis(db, engagement_id, eng, scores)
     tiles = await _cc_tiles_async(engagement_id)
     integration = await eng_int.build_integration_map(db, engagement_id)
     risks = [r async for r in db.ca_risks.find({"engagement_id": engagement_id}, {"_id": 0}).limit(50)]
@@ -2084,6 +2089,7 @@ async def ca_dashboard(request: Request, engagement_id: str, current=Depends(get
         "engagement": eng,
         "tiles": tiles,
         "scores": scores,
+        "executive_review_kpis": executive_review_kpis,
         "integration": integration,
         "advisory": advisory,
         "workflow_steps": workflow_steps,
@@ -2167,6 +2173,24 @@ async def audit_committee_pack(request: Request, engagement_id: str, current=Dep
         "advisory": {"key_risks_summary": adv.get("key_risks_summary", [])[:5], "control_improvements": adv.get("control_improvements", [])[:5]},
         "materiality_snapshot": {"final_materiality": (mat or {}).get("final_materiality"), "performance": (mat or {}).get("performance_materiality")},
     }
+
+
+@router.post("/audit-engagements/{engagement_id}/assurance-snapshot")
+async def assurance_snapshot(
+    request: Request,
+    engagement_id: str,
+    body: Optional[sch.AssuranceSnapshotIn] = None,
+    current=Depends(get_current_user),
+):
+    """Record an assurance snapshot now (deduped like dashboard unless ``force`` is true)."""
+    eng = await _engagement_or_404(engagement_id, current=current, request=request)
+    scores = await _compute_continuous_assurance(engagement_id, eng)
+    opts = body or sch.AssuranceSnapshotIn()
+    if opts.force:
+        await exec_rev.append_assurance_snapshot(db, engagement_id, scores, trigger="post_force")
+    else:
+        await exec_rev.maybe_record_assurance_snapshot(db, engagement_id, scores)
+    return {"ok": True, "force": opts.force, "continuous_assurance_score": scores.get("continuous_assurance_score")}
 
 
 @router.get("/audit-engagements/{engagement_id}/continuous-assurance-score")

@@ -187,6 +187,64 @@ async def list_notifications(db, limit: int = 50) -> List[Dict[str, Any]]:
     return [n async for n in db.notifications.find({}, {"_id": 0}).sort("created_at", -1).limit(limit)]
 
 
+async def scan_p0_action_queue(db, *, threshold: int = 3) -> Dict[str, Any]:
+    """Notify once per scope per day when P0 action queue count exceeds threshold."""
+    from app.services.action_queue_analytics_service import build_summary, record_snapshot
+
+    settings = await get_settings(db)
+    if not settings.get("enabled"):
+        return {"scanned": 0, "notified": 0, "skipped": "disabled"}
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    notified = 0
+    scanned = 0
+    entity_codes: List[Optional[str]] = [None]
+    try:
+        async for ent in db.entities.find({}, {"_id": 0, "code": 1}).limit(25):
+            code = ent.get("code")
+            if code and code not in entity_codes:
+                entity_codes.append(code)
+    except Exception:
+        pass
+
+    for entity_code in entity_codes:
+        scanned += 1
+        try:
+            await record_snapshot(db, entity_code=entity_code)
+        except Exception:
+            pass
+        summary = await build_summary(db, entity_code=entity_code)
+        p0 = int(summary.get("p0_open") or 0)
+        if p0 < threshold:
+            continue
+        scope_key = entity_code or "global"
+        existing = await db.notifications.find_one(
+            {
+                "target_id": scope_key,
+                "event_type": "p0_action_queue",
+                "created_at": {"$regex": f"^{today}"},
+            }
+        )
+        if existing:
+            continue
+        ent_label = entity_code or "all entities"
+        await notify(
+            db,
+            event_type="p0_action_queue",
+            title=f"P0 action queue backlog · {ent_label}",
+            body=(
+                f"{p0} P0 items require CFO attention ({summary.get('open_total', 0)} open, "
+                f"${summary.get('queue_exposure_usd', 0):,.0f} exposure)."
+            ),
+            severity="critical",
+            target_id=scope_key,
+            target_type="cfo_action_queue",
+            extras={"p0_open": p0, "entity_code": entity_code, "summary": summary},
+        )
+        notified += 1
+    return {"scanned": scanned, "notified": notified, "threshold": threshold}
+
+
 async def send_daily_brief(db) -> Dict[str, Any]:
     """Compile daily CFO brief and dispatch to configured webhooks (Slack-formatted if applicable)."""
     # Lazy import to avoid circular dependency

@@ -55,9 +55,31 @@ class TestReconciliationsContracts:
         assert li.status_code == 200, li.text
         assert isinstance(li.json().get("items"), list)
 
+        su = requests.get(f"{API}/reconciliations/summary", headers=_h(token), params={"limit": 5}, timeout=30)
+        assert su.status_code == 200, su.text
+        body = su.json()
+        assert "kpis" in body
+        assert "total_reconciliations" in body["kpis"]
+        assert "by_type" in body
+        assert isinstance(body["by_type"], list)
+        assert "by_entity" in body
+        assert "avg_days_to_approve" in body["kpis"] or body["kpis"].get("avg_days_to_approve") is None
+        assert "escalated_to_case_count" in body["kpis"]
+
         ge = requests.get(f"{API}/reconciliations/{rid}", headers=_h(token), timeout=30)
         assert ge.status_code == 200, ge.text
-        assert ge.json().get("reconciliation", {}).get("id") == rid
+        rec = ge.json().get("reconciliation", {})
+        assert rec.get("id") == rid
+        assert "workflow_status" in rec
+        assert "outside_tolerance" in rec
+        assert "related_journal" in ge.json()
+        assert "linked_case" in ge.json()
+
+        cc = requests.post(f"{API}/reconciliations/{rid}/create-case", headers=_h(token), json={"title": "QA case link"}, timeout=30)
+        assert cc.status_code == 200, cc.text
+        case_id = cc.json().get("case_id")
+        ge2 = requests.get(f"{API}/reconciliations/{rid}", headers=_h(token), timeout=30)
+        assert ge2.json().get("reconciliation", {}).get("case_id") == case_id
 
         ev = requests.post(f"{API}/reconciliations/{rid}/evidence", headers=_h(token), json={"type": "link", "url": "https://example.com", "notes": "QA"}, timeout=30)
         assert ev.status_code == 200, ev.text

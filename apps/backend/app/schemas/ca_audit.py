@@ -241,6 +241,12 @@ class AuditEngagementUpdate(BaseModel):
         return v
 
 
+class AssuranceSnapshotIn(BaseModel):
+    """Optional body for ``POST …/assurance-snapshot``. When ``force`` is true, a row is always appended."""
+
+    force: bool = False
+
+
 class MaterialityBaseIn(BaseModel):
     revenue: Optional[float] = None
     profit_before_tax: Optional[float] = None

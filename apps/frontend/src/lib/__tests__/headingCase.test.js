@@ -15,4 +15,9 @@ describe("toProperHeadingLabel", () => {
     expect(toProperHeadingLabel("Home")).toBe("Home");
     expect(toProperHeadingLabel("CFO Cockpit")).toBe("CFO Cockpit");
   });
+
+  it("coerces non-strings without throwing (StatCard / API edge cases)", () => {
+    expect(toProperHeadingLabel(404)).toBe("404");
+    expect(toProperHeadingLabel("ROLLUP-ITEM")).toBe("Rollup-Item");
+  });
 });

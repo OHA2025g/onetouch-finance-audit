@@ -89,15 +89,14 @@ def create_app() -> FastAPI:
     async def health():
         return {"service": "One Touch Audit AI", "status": "ok"}
 
-    for r in (auth_router, dashboards_router, controls_router, cases_router, evidence_ai_router, admin_router,
+    for r in (auth_router, reconciliations_router, dashboards_router, controls_router, cases_router, evidence_ai_router, admin_router,
               rollups_router, retention_router, legal_holds_router, dq_router, governance_router,
               system_router,
               kpi_router,
               cfo_router,
               close_router,
               ca_audit_engagements_router, ca_audit_modules_router, masters_router,
-              journals_router,
-              reconciliations_router):
+              journals_router):
         api.include_router(r)
 
     api.include_router(finance_team_router)

@@ -96,12 +96,12 @@ async def gl_anomalies(
     current=Depends(get_current_user),
 ):
     entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
-    # Use existing exceptions where control_code indicates GL signals; otherwise empty.
-    q: Dict[str, Any] = {"process": "Finance"}
+    # Exceptions with GL control codes (seed uses ``entity``; some rows may use ``entity_code``).
+    q: Dict[str, Any] = {"control_code": {"$regex": r"^C-GL-"}}
     if entity_code:
-        q["entity_code"] = entity_code
+        q["$or"] = [{"entity_code": entity_code}, {"entity": entity_code}]
     cur = db.exceptions.find(q, {"_id": 0}).sort("financial_exposure", -1).limit(limit)
-    items = [e async for e in cur if str(e.get("control_code") or "").startswith("C-GL-")]
+    items = [e async for e in cur]
     return {"items": items, "count": len(items), "as_of": as_of_now(), "source": "exceptions:C-GL-*"}
 
 

@@ -87,6 +87,8 @@ export function SectionCard({
                 type="button"
                 onClick={() => setCollapsed((c) => !c)}
                 title={collapsed ? "Expand" : "Collapse"}
+                aria-expanded={!collapsed}
+                aria-controls={collapseTestId ? `${collapseTestId}-panel` : undefined}
                 className="crt-card flex h-8 w-8 items-center justify-center text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
                 data-testid={collapseTestId || "section-card-collapse"}
               >
@@ -96,7 +98,14 @@ export function SectionCard({
           </div>
         </div>
       )}
-      {showBody ? <div className={clsx("p-5 text-foreground", bodyClassName)}>{children}</div> : null}
+      {showBody ? (
+        <div
+          id={collapseTestId ? `${collapseTestId}-panel` : undefined}
+          className={clsx("p-5 text-foreground", bodyClassName)}
+        >
+          {children}
+        </div>
+      ) : null}
     </section>
   );
 }

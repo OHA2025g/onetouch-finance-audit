@@ -23,6 +23,7 @@ ENTITIES = [
 PROCESSES = ["Procure-to-Pay", "Record-to-Report", "Order-to-Cash", "Payroll", "Treasury", "Tax", "Access/SoD"]
 
 USERS_SEED = [
+    {"email": "system@onetouch.ai", "full_name": "System (platform automation)", "role": "Service account", "entity": "US-HQ"},
     {"email": "superadmin@onetouch.ai", "full_name": "Alex Rivera", "role": "Super Admin", "entity": "US-HQ"},
     {"email": "cfo@onetouch.ai", "full_name": "Marion Acheson", "role": "CFO", "entity": "US-HQ"},
     {"email": "controller@onetouch.ai", "full_name": "Derek Whitmore", "role": "Controller", "entity": "US-HQ"},
@@ -421,7 +422,7 @@ COLLECTIONS = [
     "evidence_links", "audit_logs", "copilot_sessions", "readiness_scores",
     "ingestion_runs", "model_registry", "prompt_registry",
     "notification_settings", "notifications",
-    "organization_hierarchy", "entity_group_map", "reporting_currency_rates", "rollup_snapshots",
+    "organization_hierarchy", "entity_group_map", "reporting_currency_rates", "rollup_snapshots", "rollup_snapshot_history",
     "retention_policies", "artifact_retention_map", "purge_jobs",
     "legal_holds", "hold_artifact_links", "worm_protected_records",
     "source_connectors", "connector_runs", "connector_errors", "connector_schemas", "connector_credentials_ref",
@@ -465,6 +466,7 @@ COLLECTIONS = [
     "ca_final_reports",
     "ca_management_letters",
     "ca_mgmt_repr",
+    "ca_assurance_snapshots",
     # Phase 2 unified finance masters (additive; not dropped on routine reseed):
     "companies",
     "master_business_units",

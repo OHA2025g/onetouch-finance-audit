@@ -9,7 +9,33 @@ L4 drill standard: summary/dashboard → list API → detail API → ``GET /api/
 """
 from __future__ import annotations
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Sequence
+
+# Short handle "system" is used for automation (case owner, lifecycle) while journals/demo use system@onetouch.ai.
+_SERVICE_USER_ALIASES: Dict[str, List[str]] = {
+    "system": ["system@onetouch.ai", "system"],
+    "system@onetouch.ai": ["system@onetouch.ai", "system"],
+}
+
+
+def _user_drill_match_emails(primary: str) -> List[str]:
+    """Return all DB email keys to match for drill lists (OR query)."""
+    p = (primary or "").strip()
+    if not p:
+        return [""]
+    key = p.lower()
+    if key in _SERVICE_USER_ALIASES:
+        return list(dict.fromkeys(_SERVICE_USER_ALIASES[key]))
+    return [p]
+
+
+async def _find_user_doc(db, emails: Sequence[str]) -> Dict[str, Any] | None:
+    """Prefer canonical service email when multiple aliases match."""
+    for em in emails:
+        u = await db.users.find_one({"email": em}, {"_id": 0, "password_hash": 0})
+        if u:
+            return u
+    return None
 
 
 async def drill_invoice(db, invoice_id: str) -> Dict[str, Any]:
@@ -142,22 +168,42 @@ async def drill_user(db, raw_id: str) -> Dict[str, Any]:
         if ev_by_id and ev_by_id.get("user_email"):
             email = str(ev_by_id["user_email"]).strip()
 
-    access_events = [a async for a in db.user_access_events.find({"user_email": email}, {"_id": 0}).sort("event_ts", -1).limit(50)]
-    u = await db.users.find_one({"email": email}, {"_id": 0, "password_hash": 0})
+    emails = _user_drill_match_emails(email)
+    inq = {"user_email": {"$in": emails}}
+    access_events = [a async for a in db.user_access_events.find(inq, {"_id": 0}).sort("event_ts", -1).limit(50)]
+    u = await _find_user_doc(db, emails)
     if not u:
         ent = access_events[0].get("entity") if access_events else None
         term = bool(access_events and access_events[0].get("user_terminated"))
+        if (raw.lower() == "system" or email.lower() in ("system", "system@onetouch.ai")):
+            u = {
+                "email": "system@onetouch.ai",
+                "full_name": "System (platform automation)",
+                "role": "Service account",
+                "entity": ent,
+                "status": "active",
+                "drill_aliases": emails,
+            }
+        else:
+            u = {
+                "email": email,
+                "full_name": email,
+                "role": None,
+                "entity": ent,
+                "status": "terminated" if term else "inactive",
+            }
+    elif (email.lower() in ("system", "system@onetouch.ai") or raw.lower() == "system"):
         u = {
-            "email": email,
-            "full_name": email,
-            "role": None,
-            "entity": ent,
-            "status": "terminated" if term else "inactive",
+            **u,
+            "drill_aliases": emails,
+            "full_name": u.get("full_name") or "System (platform automation)",
+            "role": u.get("role") or "Service account",
+            "status": u.get("status") or "active",
         }
-    roles = [r async for r in db.sod_role_map.find({"user_email": email}, {"_id": 0})]
-    cases = [c async for c in db.cases.find({"owner_email": email}, {"_id": 0}).sort("due_date", 1).limit(30)]
-    journals_posted = [j async for j in db.journals.find({"created_by": email}, {"_id": 0}).sort("created_at", -1).limit(20)]
-    audit_log = [l async for l in db.audit_logs.find({"actor_user_email": email}, {"_id": 0}).sort("event_ts", -1).limit(30)]
+    roles = [r async for r in db.sod_role_map.find({"user_email": {"$in": emails}}, {"_id": 0})]
+    cases = [c async for c in db.cases.find({"owner_email": {"$in": emails}}, {"_id": 0}).sort("due_date", 1).limit(30)]
+    journals_posted = [j async for j in db.journals.find({"created_by": {"$in": emails}}, {"_id": 0}).sort("created_at", -1).limit(20)]
+    audit_log = [l async for l in db.audit_logs.find({"actor_user_email": {"$in": emails}}, {"_id": 0}).sort("event_ts", -1).limit(30)]
     return {
         "type": "user",
         "primary": u,

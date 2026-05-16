@@ -9,7 +9,38 @@ import MastersFilterStrip from "../components/filters/MastersFilterStrip";
 import InsightPanel from "../components/InsightPanel";
 import { PageHeader, PageShell, SectionCard } from "../components/PageShell";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "../components/DataTable";
+import ReadinessHeatmap from "../components/ReadinessHeatmap";
 import clsx from "clsx";
+
+function govScopeLabel(row) {
+  if (!row) return "—";
+  if (row.scope_label) return row.scope_label;
+  if (row.entity_code != null && String(row.entity_code).trim() !== "") return String(row.entity_code);
+  return "ALL ENTITIES";
+}
+
+function govDepthSnapshot(label, row) {
+  if (!row) return "—";
+  if (label === "RPT register") {
+    const rp = row.related_parties_count ?? 0;
+    const tx = row.rpt_transactions_count ?? 0;
+    return `${rp} related parties · ${tx} RPT txns`;
+  }
+  if (label === "DOA rules") {
+    const rc = row.rules_count ?? (row.items?.length ?? 0);
+    const mx = row.matrix_rows ?? 0;
+    return `${rc} rules · ${mx} matrix rows`;
+  }
+  if (label === "SoD campaigns") {
+    const c = row.campaigns_total ?? (row.items?.length ?? 0);
+    return `${c} campaign(s)`;
+  }
+  if (label === "MDQ summary") {
+    const n = row.open_findings ?? 0;
+    return `${n} open findings`;
+  }
+  return "—";
+}
 
 function cellTone(r) {
   if (r.readiness >= 80) return "text-[hsl(var(--chart-4))]";
@@ -65,6 +96,8 @@ export default function ProcessReadinessPage() {
     if (!processLens) return rows;
     return rows.filter((r) => r.process === processLens);
   }, [rows, processLens]);
+
+  const heatmapRows = useMemo(() => (processLens ? displayRows : rows), [processLens, displayRows, rows]);
 
   return (
     <PageShell maxWidth="max-w-[1700px]">
@@ -128,16 +161,17 @@ export default function ProcessReadinessPage() {
         {govDepth ? (
           <SectionCard
             kicker="GOVERNANCE DEPTH · WAVE 3"
-            title="Compliance stubs — GET /compliance-depth/* with optional entity_code (Phase 40)"
+            title="Compliance depth — GET /compliance-depth/* (live counts, Phase 40)"
             bodyClassName="p-0"
             className="mb-6"
           >
-            <DataTable className="rounded-none border-0 bg-transparent" maxHeightClassName="max-h-[220px]" testId="readiness-gov-depth-table">
+            <DataTable className="rounded-none border-0 bg-transparent" maxHeightClassName="max-h-[260px]" testId="readiness-gov-depth-table">
               <DataTableHead>
                 <tr>
                   <DataTableTh>Surface</DataTableTh>
-                  <DataTableTh>Entity echoed</DataTableTh>
-                  <DataTableTh>Note</DataTableTh>
+                  <DataTableTh>Scope</DataTableTh>
+                  <DataTableTh>Live snapshot</DataTableTh>
+                  <DataTableTh>Summary</DataTableTh>
                 </tr>
               </DataTableHead>
               <DataTableBody>
@@ -149,14 +183,32 @@ export default function ProcessReadinessPage() {
                 ].map(({ key, label, row }) => (
                   <DataTableRow key={key} testId={`readiness-gov-depth-${key}`}>
                     <DataTableTd className="crt-num text-xs text-muted-foreground">{label}</DataTableTd>
-                    <DataTableTd className="crt-num text-xs">{row?.entity_code ?? "—"}</DataTableTd>
-                    <DataTableTd className="text-xs text-muted-foreground max-w-[480px] truncate" title={row?.note}>
+                    <DataTableTd className="crt-num text-xs text-foreground">{govScopeLabel(row)}</DataTableTd>
+                    <DataTableTd className="crt-num text-xs text-foreground">{govDepthSnapshot(label, row)}</DataTableTd>
+                    <DataTableTd className="text-xs text-muted-foreground max-w-[360px] truncate" title={row?.note}>
                       {row?.note || "—"}
                     </DataTableTd>
                   </DataTableRow>
                 ))}
               </DataTableBody>
             </DataTable>
+          </SectionCard>
+        ) : null}
+
+        {heatmapRows.length > 0 ? (
+          <SectionCard
+            kicker="HEATMAP"
+            title="Process × entity matrix"
+            subtitle="Same readiness scores as the table below — click a cell to open scoped cases."
+            className="mb-6"
+            bodyClassName="p-0 overflow-x-auto"
+          >
+            <ReadinessHeatmap
+              rows={heatmapRows}
+              buildDrillHref={(p, e) =>
+                hrefWithMasterParams(`/app/cases?entity=${encodeURIComponent(e)}&process=${encodeURIComponent(p)}`)
+              }
+            />
           </SectionCard>
         ) : null}
 

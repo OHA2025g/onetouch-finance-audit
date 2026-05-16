@@ -55,6 +55,7 @@ class TestFinanceTeamContracts:
     def test_workload_sla_rework_bottlenecks_scorecards(self, token):
         for path, key in [
             ("/finance-team/workload", "pending_tasks"),
+            ("/finance-team/sla-trend", "series"),
             ("/finance-team/sla", "approved_pct"),
             ("/finance-team/rework", "reopened_pct"),
             ("/finance-team/bottlenecks", "pending"),
@@ -65,3 +66,5 @@ class TestFinanceTeamContracts:
             body = r.json()
             assert key in body
             assert "as_of" in body
+            if path == "/finance-team/sla-trend":
+                assert isinstance(body.get("series"), list)

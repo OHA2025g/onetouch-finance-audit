@@ -116,6 +116,54 @@ export default function CaCommandCenter() {
         </SectionCard>
       ) : null}
 
+      {dash?.executive_review_kpis ? (
+        <SectionCard kicker="EXECUTIVE KPIs" title="Committee bundle (live dashboard)" bodyClassName="mt-4 space-y-3 p-6">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 font-mono text-[11px]">
+            <div>
+              <div className="text-muted-foreground">Committee floor</div>
+              <div className="mt-1 text-lg text-foreground">
+                {dash.executive_review_kpis.committee_threshold?.continuous_assurance_floor ?? "—"}
+              </div>
+              <div
+                className={
+                  dash.executive_review_kpis.committee_threshold?.below_floor
+                    ? "text-amber-700 dark:text-amber-400"
+                    : "text-emerald-700 dark:text-emerald-400"
+                }
+              >
+                {dash.executive_review_kpis.committee_threshold?.below_floor ? "Below threshold" : "At or above"}
+              </div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">Assurance trend</div>
+              <div className="mt-1 text-lg capitalize text-foreground">
+                {dash.executive_review_kpis.assurance_trend?.direction ?? "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">Evidence readiness</div>
+              <div className="mt-1 text-lg text-foreground">
+                {dash.executive_review_kpis.evidence_readiness?.readiness_pct != null
+                  ? `${dash.executive_review_kpis.evidence_readiness.readiness_pct}%`
+                  : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">Open critical cases</div>
+              <div className="mt-1 text-lg text-foreground">
+                {dash.executive_review_kpis.agenda_readiness?.critical_open_cases ?? "—"}
+              </div>
+            </div>
+          </div>
+          <Link
+            to={execLink}
+            className="crt-num inline-block text-[10px] font-semibold uppercase tracking-wider text-primary underline-offset-2 hover:underline"
+          >
+            Full executive review →
+          </Link>
+        </SectionCard>
+      ) : null}
+
       {dash?.integration?.counts ? (
         <SectionCard kicker="INTEGRATION" title="Cross-module chain (counts)" bodyClassName="mt-4 p-6 text-sm text-muted-foreground">
           <p className="mb-3 text-foreground">{dash.integration.narrative}</p>

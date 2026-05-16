@@ -13,6 +13,8 @@ test.describe("Phase 4 — CFO Command Center cockpit shell (PR-44)", () => {
     await page.goto("/app/cfo");
     await expect(page.getByTestId("cfo-cockpit")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("masters-filter-strip")).toBeVisible();
+    await expect(page.getByTestId("cfo-as-of")).toBeVisible();
+    await expect(page.getByTestId("cfo-generate-narrative-btn")).toBeVisible();
 
     await expect(page.getByTestId("export-xlsx-btn")).toBeVisible();
     await expect(page.getByTestId("export-pack-btn")).toBeVisible();

@@ -130,3 +130,75 @@ class TestCfoActionQueueContracts:
         # Verify at least one relevant audit entry exists in recent window
         action_types = {x.get("action_type") for x in after if isinstance(x, dict)}
         assert {"cfo_action_approve", "cfo_action_escalate", "cfo_action_comment"} & action_types
+
+    def test_summary_dashboard_export_and_bulk(self, tokens):
+        for path in ("/cfo/action-queue/summary", "/cfo/action-queue/dashboard", "/cfo/action-queue/trends"):
+            r = requests.get(f"{API}{path}", headers=_h(tokens["cfo"]), timeout=60)
+            assert r.status_code == 200, f"{path}: {r.text}"
+        dash = requests.get(f"{API}/cfo/action-queue/dashboard", headers=_h(tokens["cfo"]), timeout=60).json()
+        assert "summary" in dash
+        assert "entity_process_matrix" in dash
+        assert "sla_burndown" in dash
+        trends = dash.get("trends") or {}
+        assert "throughput" in trends or "series" in trends
+
+        rx = requests.get(
+            f"{API}/cfo/action-queue/export",
+            headers=_h(tokens["cfo"]),
+            params={"format": "xlsx"},
+            timeout=60,
+        )
+        assert rx.status_code == 200, rx.text
+        assert "spreadsheetml" in (rx.headers.get("content-type") or "")
+
+        rlist = requests.get(
+            f"{API}/cfo/action-queue",
+            headers=_h(tokens["cfo"]),
+            params={"refresh": True, "limit": 5, "sort": "materiality"},
+            timeout=60,
+        )
+        assert rlist.status_code == 200, rlist.text
+        ids = [x["id"] for x in (rlist.json().get("items") or [])[:2]]
+        if len(ids) >= 2:
+            rb = requests.post(
+                f"{API}/cfo/action/bulk",
+                headers=_h(tokens["cfo"]),
+                json={"ids": ids, "action": "escalate", "note": "L4 bulk test"},
+                timeout=60,
+            )
+            assert rb.status_code == 200, rb.text
+            assert rb.json().get("succeeded", 0) >= 1
+
+    def test_cursor_pagination(self, tokens):
+        r1 = requests.get(
+            f"{API}/cfo/action-queue",
+            headers=_h(tokens["cfo"]),
+            params={"refresh": True, "limit": 3, "sort": "score"},
+            timeout=60,
+        )
+        assert r1.status_code == 200, r1.text
+        b1 = r1.json()
+        if not b1.get("has_more") or not b1.get("next_cursor"):
+            pytest.skip("not enough items for cursor pagination smoke test")
+        r2 = requests.get(
+            f"{API}/cfo/action-queue",
+            headers=_h(tokens["cfo"]),
+            params={"limit": 3, "sort": "score", "cursor": b1["next_cursor"]},
+            timeout=60,
+        )
+        assert r2.status_code == 200, r2.text
+        ids1 = {x["id"] for x in b1.get("items") or []}
+        ids2 = {x["id"] for x in r2.json().get("items") or []}
+        assert ids1.isdisjoint(ids2), "cursor page should not repeat prior ids"
+
+    def test_scoped_entity_list(self, tokens):
+        r = requests.get(
+            f"{API}/cfo/action-queue",
+            headers=_h(tokens["cfo"]),
+            params={"refresh": True, "limit": 50, "entity_code": "US-HQ"},
+            timeout=60,
+        )
+        assert r.status_code == 200, r.text
+        for it in r.json().get("items") or []:
+            ent = it.get("entity") or (it.get("detail") or {}).get("entity")
+            assert ent in (None, "US-HQ"), f"unexpected entity {ent!r} for US-HQ scope"

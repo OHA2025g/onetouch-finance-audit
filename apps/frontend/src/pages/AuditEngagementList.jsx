@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { http } from "../lib/api";
 import { toast } from "sonner";
@@ -15,8 +15,10 @@ export default function AuditEngagementList() {
   const [rows, setRows] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
+  /** Statutory / internal / all other audit_type values (GST, tax, IFC, special audit, …). */
+  const [auditKindFilter, setAuditKindFilter] = useState("statutory");
 
-  const load = React.useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [listRes, metRes] = await Promise.all([
@@ -40,6 +42,15 @@ export default function AuditEngagementList() {
     })();
     return () => { cancelled = true; };
   }, [load]);
+
+  const filteredRows = useMemo(() => {
+    return rows.filter((e) => {
+      const t = String(e.audit_type || "").trim().toLowerCase();
+      if (auditKindFilter === "statutory") return t === "statutory";
+      if (auditKindFilter === "internal") return t === "internal";
+      return t !== "statutory" && t !== "internal";
+    });
+  }, [rows, auditKindFilter]);
 
   if (loading) {
     return <div className="p-8 font-mono text-xs text-[#737373] uppercase tracking-wider">Loading audit planning…</div>;
@@ -159,6 +170,40 @@ export default function AuditEngagementList() {
         </SectionCard>
       ) : null}
 
+      <div
+        className="mb-4 rounded-sm border border-zinc-200 bg-zinc-50/90 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/50"
+        data-testid="audit-engagement-type-filter"
+      >
+        <div className="crt-overline mb-2 text-muted-foreground">Statutory audit scope</div>
+        <fieldset className="flex flex-wrap gap-6 border-0 p-0 m-0">
+          <legend className="sr-only">Filter engagements by audit type</legend>
+          {[
+            { value: "statutory", label: "Statutory audit" },
+            { value: "internal", label: "Internal audit" },
+            { value: "others", label: "Others" },
+          ].map(({ value, label }) => (
+            <label
+              key={value}
+              className="flex cursor-pointer items-center gap-2 font-mono text-xs uppercase tracking-wider text-foreground"
+            >
+              <input
+                type="radio"
+                name="audit-engagement-kind"
+                value={value}
+                checked={auditKindFilter === value}
+                onChange={() => setAuditKindFilter(value)}
+                className="h-3.5 w-3.5 accent-primary"
+                data-testid={`audit-kind-${value}`}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </fieldset>
+        <p className="mt-2 font-mono text-[10px] leading-snug text-muted-foreground">
+          Others includes GST, tax, IFC, special audit, and any non-statutory / non-internal type.
+        </p>
+      </div>
+
       <SectionCard
         kicker="ENGAGEMENTS"
         title="All engagements"
@@ -184,7 +229,7 @@ export default function AuditEngagementList() {
             </tr>
           </DataTableHead>
           <DataTableBody>
-            {rows.map((e) => (
+            {filteredRows.map((e) => (
               <DataTableRow key={e.id} onClick={() => nav(`/app/audit-planning/engagements/${encodeURIComponent(e.engagement_id)}`)} className="cursor-pointer">
                 <DataTableTd className="font-mono text-xs text-foreground">{e.engagement_id}</DataTableTd>
                 <DataTableTd>{e.entity_name}</DataTableTd>
@@ -232,6 +277,16 @@ export default function AuditEngagementList() {
         </DataTable>
         {!rows.length ? (
           <div className="p-8 font-mono text-xs text-[#737373]">No engagements yet. After first backend boot, seed creates demo engagements, or create one above.</div>
+        ) : !filteredRows.length ? (
+          <div className="p-8 font-mono text-xs text-[#737373]">
+            No engagements match this filter (
+            {auditKindFilter === "statutory"
+              ? "statutory audit"
+              : auditKindFilter === "internal"
+                ? "internal audit"
+                : "others"}
+            ). Try another audit type above.
+          </div>
         ) : null}
       </SectionCard>
     </PageShell>

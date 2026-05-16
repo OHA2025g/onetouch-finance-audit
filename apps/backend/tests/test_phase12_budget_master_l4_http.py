@@ -73,6 +73,9 @@ class TestBudgetContracts:
         assert get1.status_code == 200, get1.text
         assert get1.json().get("found") is True
 
+        lk_before = requests.post(f"{API}/budget/{bid}/lock", headers=_h(token), timeout=30)
+        assert lk_before.status_code == 409, lk_before.text
+
         ap = requests.post(f"{API}/budget/{bid}/approve", headers=_h(token), timeout=30)
         assert ap.status_code == 200, ap.text
         assert ap.json().get("status") == "ok"
@@ -84,4 +87,13 @@ class TestBudgetContracts:
         ul = requests.post(f"{API}/budget/{bid}/unlock", headers=_h(token), timeout=30)
         assert ul.status_code == 200, ul.text
         assert ul.json().get("status") == "ok"
+
+    def test_budget_versions_returns_governance_counts(self, token):
+        ver = requests.get(f"{API}/budget/versions", headers=_h(token), timeout=30)
+        assert ver.status_code == 200, ver.text
+        body = ver.json()
+        assert "governance" in body
+        gov = body["governance"]
+        assert set(gov.keys()) >= {"uploads", "draft", "approved", "locked"}
+        assert gov["uploads"] == body.get("count", len(body.get("items") or []))
 

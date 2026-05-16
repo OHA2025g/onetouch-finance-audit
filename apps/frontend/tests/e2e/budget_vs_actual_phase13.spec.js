@@ -21,17 +21,17 @@ test.describe("Phase 13 — Budget vs actual route (PR-53)", () => {
       .click();
 
     await expect(page).toHaveURL(/\/app\/finance-operations\/budget-vs-actual-dashboard\/?(?=\?|#|$)/);
-    await expect(page.getByTestId("fpa-page")).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator('[data-testid="fpa-page"][data-budget-vs-actual-surface="true"]')).toBeVisible();
-    await expect(page.getByTestId("kpi-capex-var")).toBeVisible();
-    await expect(page.getByTestId("fpa-capex-table")).toBeVisible();
+    await expect(page.getByTestId("budget-vs-actual-page")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-testid="budget-vs-actual-page"][data-budget-vs-actual-surface="true"]')).toBeVisible();
+    await expect(page.getByTestId("bva-capex-variance")).toBeVisible();
+    await expect(page.getByTestId("bva-variance-summary")).toBeVisible();
   });
 
-  test("direct budget-vs-actual-dashboard marks BvA surface + FP&A ladder", async ({ page }) => {
+  test("direct budget-vs-actual-dashboard shows variance workflow cards", async ({ page }) => {
     await loginAsCfo(page);
     await page.goto("/app/finance-operations/budget-vs-actual-dashboard");
-    await expect(page.getByTestId("fpa-page")).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator('[data-testid="fpa-page"][data-budget-vs-actual-surface="true"]')).toBeVisible();
-    await expect(page.getByTestId("kpi-capex-actual")).toBeVisible();
+    await expect(page.getByTestId("budget-vs-actual-page")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("bva-capex-actual")).toBeVisible();
+    await expect(page.getByTestId("bva-variance-table")).toBeVisible();
   });
 });

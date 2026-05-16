@@ -17,11 +17,15 @@ export default function Layout() {
   const NAV_SECTIONS = useMemo(() => getSidebarNavGroups(user), [user]);
   const navSectionIds = useMemo(() => NAV_SECTIONS.map((s) => s.id), [NAV_SECTIONS]);
   const navSectionIdsKey = useMemo(() => navSectionIds.join("|"), [navSectionIds]);
-  const [openSections, setOpenSections] = useState(() => new Set(navSectionIds));
+  const defaultOpenSectionId = navSectionIds[0] ?? null;
+  const [openSections, setOpenSections] = useState(() =>
+    defaultOpenSectionId ? new Set([defaultOpenSectionId]) : new Set(),
+  );
 
-  // When role changes / nav changes, keep all sections expanded by default.
+  // When role changes / nav changes, open exactly one section (the first group).
   useEffect(() => {
-    setOpenSections(new Set(navSectionIds));
+    const first = navSectionIds[0];
+    setOpenSections(first ? new Set([first]) : new Set());
   }, [navSectionIdsKey, navSectionIds]);
 
   const doLogout = () => {
@@ -83,14 +87,10 @@ export default function Layout() {
                 <button
                   type="button"
                   className="crt-overline flex w-full cursor-pointer items-center justify-between text-muted-foreground px-4 pb-1 pt-3 transition-colors hover:bg-zinc-100/80 hover:text-foreground active:bg-zinc-200/80 dark:hover:bg-zinc-900/80 dark:active:bg-zinc-800/80"
-                  onClick={() =>
-                    setOpenSections((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(sec.id)) next.delete(sec.id);
-                      else next.add(sec.id);
-                      return next;
-                    })
-                  }
+                  onClick={() => {
+                    // Accordion: only one section expanded at a time.
+                    setOpenSections(new Set([sec.id]));
+                  }}
                   data-testid={`nav-section-toggle-${sec.id}`}
                   aria-expanded={openSections.has(sec.id)}
                 >

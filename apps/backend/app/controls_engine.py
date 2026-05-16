@@ -174,6 +174,48 @@ async def _apply_exception_org_enrichment_batch(db, batch: List[Dict[str, Any]])
     return n
 
 
+def _access_exposure_floor_usd(severity: str) -> float:
+    """Minimum notional USD for access/SoD findings with no invoice/payment tie-out (triage, CFO rollups)."""
+    sev = (severity or "medium").lower()
+    return {"critical": 75_000.0, "high": 35_000.0, "medium": 15_000.0, "low": 5_000.0}.get(sev, 12_500.0)
+
+
+ACCESS_SOD_CONTROL_CODES = frozenset({"C-ACC-001", "C-ACC-002"})
+
+
+def normalize_exception_for_api(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Align exception JSON with ``ExceptionOut`` and CFO/Cases UIs (org aliases, stale $0 access rows)."""
+    out = dict(doc)
+    if out.get("department_id") in (None, "") and out.get("dept_id"):
+        out["department_id"] = out["dept_id"]
+    if out.get("cost_center_id") in (None, "") and out.get("cc_id"):
+        out["cost_center_id"] = out["cc_id"]
+    raw = float(out.get("financial_exposure") or 0.0)
+    if raw <= 0 and out.get("control_code") in ACCESS_SOD_CONTROL_CODES:
+        out["financial_exposure"] = round(_access_exposure_floor_usd(out.get("severity") or "medium"), 2)
+    else:
+        out["financial_exposure"] = round(raw, 2)
+    return out
+
+
+async def _user_journal_touchpoint_usd(db, user_email: str) -> float:
+    """Sum journal totals posted under this user id as a monetary proxy for access-path / SoD risk."""
+    total = 0.0
+    async for j in db.journals.find({"created_by": user_email}, {"_id": 0, "total_amount": 1}).limit(2500):
+        try:
+            total += float(j.get("total_amount") or 0.0)
+        except (TypeError, ValueError):
+            continue
+    return round(min(total, 5_000_000.0), 2)
+
+
+async def _access_style_financial_exposure_usd(db, *, user_email: str, severity: str) -> float:
+    """Exposure for access / SoD: max(journal activity attributed to user, severity-based floor)."""
+    base = await _user_journal_touchpoint_usd(db, user_email)
+    floor = _access_exposure_floor_usd(severity)
+    return round(max(base, floor), 2)
+
+
 def _exc(control: dict, *, entity: str, severity: str, title: str, summary: str,
          source_record_type: str, source_record_id: str,
          financial_exposure: float, materiality_score: float, anomaly_score: float,
@@ -360,6 +402,7 @@ async def run_approval_bypass(db, control):
 async def run_inactive_user_activity(db, control):
     exs = []
     async for e in db.user_access_events.find({"user_terminated": True}, {"_id": 0}):
+        exposure = await _access_style_financial_exposure_usd(db, user_email=e["user_email"], severity="critical")
         exs.append(_exc(control,
                         entity=e["entity"],
                         severity="critical",
@@ -367,8 +410,8 @@ async def run_inactive_user_activity(db, control):
                         summary=f"Event `{e['event_type']}` at {e['event_ts'][:16]} by terminated user {e['user_email']}.",
                         source_record_type="access_event",
                         source_record_id=e["id"],
-                        financial_exposure=0.0,
-                        materiality_score=0.65,
+                        financial_exposure=exposure,
+                        materiality_score=min(1.0, exposure / 500_000),
                         anomaly_score=0.88,
                         source_record_user_email=e["user_email"]))
     return exs
@@ -380,12 +423,16 @@ async def run_sod_conflict(db, control):
     forbidden = [(f["a"], f["b"]) async for f in db.sod_forbidden.find({}, {"_id": 0})]
     by_user = defaultdict(set)
     user_entity = {}
+    exposure_cache: Dict[str, float] = {}
     for r in role_map:
         by_user[r["user_email"]].add(r["role"])
         user_entity[r["user_email"]] = r["entity"]
     for user, roles in by_user.items():
         for a, b in forbidden:
             if a in roles and b in roles:
+                if user not in exposure_cache:
+                    exposure_cache[user] = await _access_style_financial_exposure_usd(db, user_email=user, severity="high")
+                exposure = exposure_cache[user]
                 exs.append(_exc(control,
                                 entity=user_entity.get(user, "US-HQ"),
                                 severity="high",
@@ -393,8 +440,8 @@ async def run_sod_conflict(db, control):
                                 summary=f"User {user} assigned incompatible roles ({a}, {b}). Immediate review required.",
                                 source_record_type="user",
                                 source_record_id=user,
-                                financial_exposure=0.0,
-                                materiality_score=0.7,
+                                financial_exposure=exposure,
+                                materiality_score=min(1.0, exposure / 500_000),
                                 anomaly_score=0.85))
     return exs
 

@@ -101,7 +101,9 @@ export const ROLES = {
 
 function roleAllowed(userRole, allowed) {
   if (!allowed) return true;
-  return allowed.includes(userRole);
+  if (Array.isArray(allowed)) return allowed.includes(userRole);
+  if (typeof allowed === "string") return allowed === userRole;
+  return false;
 }
 
 function filterItems(user, items) {
@@ -409,6 +411,7 @@ export const ROUTE_LABELS = [
   { prefix: "/app/financial-audit/gl-audit-dashboard", label: "GL audit workbench" },
   { prefix: "/app/financial-audit/journal-risk-dashboard", label: "Journal risk" },
   { prefix: "/app/financial-audit/reconciliations-dashboard", label: "Reconciliations workbench" },
+  { prefix: "/app/bank-recon", label: "Bank statement detail" },
   { prefix: "/app/financial-audit/bank-reconciliation-dashboard", label: "Bank reconciliation" },
   { prefix: "/app/financial-audit/inventory-audit-dashboard", label: "Inventory audit" },
   { prefix: "/app/financial-audit/physical-verification-dashboard", label: "Physical verification" },
@@ -703,7 +706,8 @@ export const MODULE_HUBS = {
       {
         to: "/app/executive-review",
         title: "Executive review",
-        body: "CFO & committee workflows.",
+        body: "Assurance scores, committee pack, and management letter — engagement data from the CA engine.",
+        badge: "Live",
         testId: "hub-card-executive-review",
       },
     ],
@@ -757,7 +761,13 @@ export const MODULE_HUBS = {
         testId: "hub-card-fpa-snapshot",
       },
       { to: "/app/controller", title: "Controller dashboard", body: "Operational close view, reconciliations, and AP exceptions.", badge: "Live" },
-      { to: "/app/audit", title: "Audit workspace", body: "Control testing and exceptions feeding close quality.", badge: "Live" },
+      {
+        to: "/app/audit",
+        title: "Audit workspace",
+        body: "23-rule continuous control testing: KPIs, trends, run controls, triage scoped exceptions.",
+        badge: "Live",
+        testId: "hub-card-audit-workspace",
+      },
     ],
   },
   "financial-audit": {
@@ -874,7 +884,13 @@ export const MODULE_HUBS = {
         body: "SRS alias — credit note concentration & reversal signals (credit notes workbench).",
         badge: "Live",
       },
-      { to: "/app/audit", title: "Controls & tests", body: "Re-run controls and monitor exceptions.", badge: "Live" },
+      {
+        to: "/app/audit",
+        title: "Controls & tests",
+        body: "Audit workspace — health donut, process charts, batch run, deep-link controls.",
+        badge: "Live",
+        testId: "hub-card-controls-tests",
+      },
     ],
   },
   "working-capital": {
@@ -1048,7 +1064,7 @@ export const MODULE_HUBS = {
         testId: "hub-card-board-reporting-workbench",
       },
       { to: "/app/audit-committee", title: "Audit committee", body: "CFO audit committee dashboard.", badge: "Live" },
-      { to: "/app/executive-review", title: "Executive review", body: "CFO & committee hub.", badge: "Live" },
+      { to: "/app/executive-review", title: "Executive review", body: "Assurance, committee pack, and letter — live engagement data.", badge: "Live" },
       { to: "/app/reporting-studio", title: "Reporting studio", body: "CA reporting workflows.", badge: "Live" },
     ],
   },

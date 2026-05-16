@@ -34,6 +34,8 @@ test.describe("Phase 3 — CFO KPI drill-down (PR-43)", () => {
     await expect(page.getByTestId("kpi-drill-page")).toBeVisible();
     await expect(page.getByTestId("kpi-drill-loading")).toBeHidden({ timeout: 30_000 });
     await expect(page.getByTestId("kpi-drill-error")).toBeHidden();
+    await expect(page.getByTestId("readiness-summary-strip")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("readiness-kpi-current")).toBeVisible();
 
     await page.getByTestId("kpi-back-cfo").click();
     await expect(page.getByTestId("cfo-cockpit")).toBeVisible({ timeout: 30_000 });

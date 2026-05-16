@@ -2,9 +2,35 @@
 from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from app.utils.timeutil import iso_utc
+
+
+async def hydrate_case_rows_financial_exposure(db, rows: List[Dict[str, Any]]) -> None:
+    """Copy exposure + org slice from linked exceptions (canonical fields, access/SoD stale-zero fill)."""
+    from app.controls_engine import normalize_exception_for_api
+
+    if not rows:
+        return
+    ex_ids = [r["exception_id"] for r in rows if r.get("exception_id")]
+    if not ex_ids:
+        return
+    ex_by_id: Dict[str, Dict[str, Any]] = {}
+    async for ex in db.exceptions.find(
+        {"id": {"$in": ex_ids}},
+        {"_id": 0},
+    ):
+        ex_by_id[ex["id"]] = ex
+    for row in rows:
+        ex0 = ex_by_id.get(row.get("exception_id") or "")
+        if ex0 is not None:
+            n = normalize_exception_for_api(ex0)
+            row["financial_exposure"] = n["financial_exposure"]
+            if n.get("department_id"):
+                row["department_id"] = n["department_id"]
+            if n.get("cost_center_id"):
+                row["cost_center_id"] = n["cost_center_id"]
 
 
 def merge_cases_master_filters(

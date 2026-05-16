@@ -8,7 +8,7 @@ async function loginAsCfo(page) {
 }
 
 test.describe("Phase 12 — Budget master route (PR-52)", () => {
-  test("finance operations hub navigates to budget master roadmap URL", async ({ page }) => {
+  test("finance operations hub navigates to budget master governance page", async ({ page }) => {
     await loginAsCfo(page);
     await page.goto("/app/finance-operations");
     await expect(page.getByTestId("module-hub-finance-operations")).toBeVisible({ timeout: 30_000 });
@@ -21,17 +21,19 @@ test.describe("Phase 12 — Budget master route (PR-52)", () => {
       .click();
 
     await expect(page).toHaveURL(/\/app\/finance-operations\/budget-master\/?(?=\?|#|$)/);
-    await expect(page.getByTestId("fpa-page")).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator('[data-testid="fpa-page"][data-budget-master-surface="true"]')).toBeVisible();
-    await expect(page.getByTestId("kpi-capex-budget")).toBeVisible();
-    await expect(page.getByTestId("fpa-capex-table")).toBeVisible();
+    await expect(page.getByTestId("budget-master-page")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('[data-testid="budget-master-page"][data-budget-master-surface="true"]')).toBeVisible();
+    await expect(page.getByTestId("budget-upload-count")).toBeVisible();
+    await expect(page.getByTestId("budget-create")).toBeVisible();
+    await expect(page.getByTestId("budget-versions-table")).toBeVisible();
   });
 
-  test("direct /finance-operations/budget-master marks budget surface + FP&A ladder", async ({ page }) => {
+  test("direct /finance-operations/budget-master shows upload and governance KPIs", async ({ page }) => {
     await loginAsCfo(page);
     await page.goto("/app/finance-operations/budget-master");
-    await expect(page.getByTestId("fpa-page")).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator('[data-testid="fpa-page"][data-budget-master-surface="true"]')).toBeVisible();
-    await expect(page.getByTestId("fpa-je-table")).toBeVisible();
+    await expect(page.getByTestId("budget-master-page")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("budget-approved-count")).toBeVisible();
+    await expect(page.getByTestId("budget-locked-count")).toBeVisible();
+    await expect(page.getByTestId("budget-upload-file")).toBeVisible();
   });
 });

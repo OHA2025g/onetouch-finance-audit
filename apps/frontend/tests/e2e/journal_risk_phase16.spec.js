@@ -23,7 +23,8 @@ test.describe("Phase 16 — Journal risk workbench (PR-56)", () => {
     await expect(page).toHaveURL(/\/app\/financial-audit\/journal-risk-dashboard\/?(?=\?|#|$)/);
     await expect(page.getByTestId("journal-risk-page")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('[data-testid="journal-risk-page"][data-journal-risk-surface="true"]')).toBeVisible();
-    await expect(page.getByTestId("jr-kpi-rules-count")).toBeVisible();
+    await expect(page.getByTestId("jr-kpi-strip")).toBeVisible();
+    await expect(page.getByTestId("jr-kpi-high-count")).toBeVisible();
     await expect(page.getByTestId("jr-rules-table")).toBeVisible();
     await expect(page.getByTestId("jr-journals-table")).toBeVisible();
   });
@@ -33,6 +34,7 @@ test.describe("Phase 16 — Journal risk workbench (PR-56)", () => {
     await page.goto("/app/financial-audit/journal-risk-dashboard");
     await expect(page.getByTestId("journal-risk-page")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('[data-testid="journal-risk-page"][data-journal-risk-surface="true"]')).toBeVisible();
-    await expect(page.getByTestId("jr-kpi-je-count")).toBeVisible();
+    await expect(page.getByTestId("jr-kpi-total")).toBeVisible();
+    await expect(page.getByTestId("jr-band-summary")).toBeVisible();
   });
 });

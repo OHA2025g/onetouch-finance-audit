@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
+from app.connectors.adapters._normalize import normalize_generic, normalize_journal
 from app.connectors.adapters.base import BaseConnectorAdapter
 from app.connectors.types import FetchResult, HealthCheckResult
 from app.utils.timeutil import iso_utc
@@ -24,7 +25,10 @@ class MockSapAdapter(BaseConnectorAdapter):
         if domain == "payments":
             return {**base, "required": base["required"] + ["payment_ref", "vendor_id", "amount", "payment_date", "status"]}
         if domain == "journals":
-            return {**base, "required": base["required"] + ["journal_number", "amount", "created_by", "created_at"]}
+            return {
+                **base,
+                "required": base["required"] + ["journal_number", "amount", "created_by", "created_at", "posting_date"],
+            }
         if domain == "purchase_orders":
             return {**base, "required": base["required"] + ["po_number", "vendor_id", "amount", "po_date", "status"]}
         if domain == "goods_receipts":
@@ -101,23 +105,54 @@ class MockSapAdapter(BaseConnectorAdapter):
                     }
                 )
         elif domain == "journals":
-            for i in range(3):
+            now_dt = datetime.now(timezone.utc)
+            scenarios = [
+                {
+                    "journal_number": "SAP-JRN-1",
+                    "amount": 125_000.0,
+                    "created_by": "gl.lead@onetouch.ai",
+                    "approver_email": "controller@onetouch.ai",
+                    "posting_date": iso_utc(now_dt - timedelta(days=2)),
+                    "created_at": iso_utc(now_dt - timedelta(days=2)),
+                },
+                {
+                    "journal_number": "SAP-JRN-2",
+                    "amount": 85_000.0,
+                    "created_by": "gl.lead@onetouch.ai",
+                    "approver_email": None,
+                    "posting_date": iso_utc(now_dt - timedelta(days=25)),
+                    "created_at": iso_utc(now_dt - timedelta(days=1)),
+                },
+                {
+                    "journal_number": "SAP-JRN-3",
+                    "amount": 42_000.0,
+                    "created_by": "ap.clerk@onetouch.ai",
+                    "approver_email": "controller@onetouch.ai",
+                    "posting_date": iso_utc(now_dt - timedelta(days=5)),
+                    "created_at": iso_utc(now_dt - timedelta(days=5)),
+                },
+            ]
+            for i, sc in enumerate(scenarios):
                 recs.append(
                     {
                         "id": _id("JRN"),
-                        "journal_number": f"SAP-JRN-{i+1}",
                         "entity": ent,
-                        "posting_date": now,
-                        "amount": float(50000 + i * 10000),
                         "currency": self.config.base_currency,
-                        "created_by": "gl.lead@onetouch.ai",
-                        "approver_email": "controller@onetouch.ai",
-                        "created_at": now,
+                        "description": "SAP mock journal",
                         "source_system": src,
+                        **sc,
                     }
                 )
         else:
             recs = []
 
         return FetchResult(domain=domain, records=recs, cursor=None)
+
+    def normalize(self, domain: str, record: Dict[str, Any]) -> Dict[str, Any]:
+        ent = self.config.entity_code
+        src = str(record.get("source_system") or "SAP-MOCK")
+        base = normalize_generic(domain, record, entity_code=ent, source_system=src)
+        if domain == "journals":
+            return normalize_journal(base)
+        return base
 

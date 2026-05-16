@@ -39,6 +39,7 @@ The platform keeps all existing modules and routes. New **audit engagement** dat
 
 | Route | Purpose |
 |-------|---------|
+| `/app/audit` | **Audit workspace** (Finance Operations) — 23-rule control testing, KPIs, trends, batch run, scoped exceptions (not IFC engagement control library) |
 | `/app/audit-planning` | Engagement list |
 | `/app/audit-planning/new` | Create engagement |
 | `/app/audit-planning/engagements/:engagementId` | Engagement hub (`?tab=` for deep link, e.g. `wp`, `financial`); Evidence graph **working paper** nodes open here with `?tab=wp` |

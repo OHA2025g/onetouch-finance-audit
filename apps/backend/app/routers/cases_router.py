@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth import get_current_user
 from app.deps import db, audit_log, iso
 from app.models import CaseOut, CaseUpdate, CommentCreate, CommentOut
-from app.services.case_service import case_from_exception, merge_cases_master_filters
+from app.controls_engine import normalize_exception_for_api
+from app.services.case_service import case_from_exception, hydrate_case_rows_financial_exposure, merge_cases_master_filters
 from app.services.rbac_service import enforce_entity_scope
 
 router = APIRouter(tags=["cases"])
@@ -74,12 +75,12 @@ async def cases_list(
         mat_doc = await db.ca_materiality.find_one({"engagement_id": engagement_id}, {"_id": 0})
     fm = float(mat_doc.get("final_materiality") or 0) if mat_doc else 0.0
     trivial = float(mat_doc.get("trivial_threshold") or 0) if mat_doc else 0.0
+    rows_raw = [dict(c) async for c in db.cases.find(q, {"_id": 0}).sort("due_date", 1).limit(limit)]
+    await hydrate_case_rows_financial_exposure(db, rows_raw)
     out: List[Dict[str, Any]] = []
-    async for c in db.cases.find(q, {"_id": 0}).sort("due_date", 1).limit(limit):
-        row = dict(c)
+    for row in rows_raw:
         if engagement_id and (fm or trivial):
-            ex = await db.exceptions.find_one({"id": row.get("exception_id")}, {"_id": 0})
-            fe = float(ex.get("financial_exposure") or 0) if ex else 0.0
+            fe = float(row.get("financial_exposure") or 0.0)
             row["material_impact"] = bool(fm and fe >= fm)
             row["material_watch"] = bool(trivial and fe >= trivial and (not fm or fe < fm))
         out.append(row)
@@ -98,8 +99,14 @@ async def case_detail(case_id: str, current=Depends(get_current_user)):
     history = [h async for h in db.case_status_history.find({"case_id": case_id}, {"_id": 0}).sort("changed_at", 1)]
     exception = await db.exceptions.find_one({"id": case["exception_id"]}, {"_id": 0})
     governance = await ghs.governance_flags_for_case(db, case_id)
+    case_out = dict(case)
+    await hydrate_case_rows_financial_exposure(db, [case_out])
     return {
-        "case": case, "comments": comments, "history": history, "exception": exception, "governance": governance,
+        "case": case_out,
+        "comments": comments,
+        "history": history,
+        "exception": normalize_exception_for_api(exception) if exception else None,
+        "governance": governance,
     }
 
 

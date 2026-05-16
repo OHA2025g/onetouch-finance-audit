@@ -101,12 +101,14 @@ function titleCaseCore(core) {
 }
 
 function titleCaseWord(word) {
-  if (!word) return word;
-  if (word.includes("-")) {
-    return word.split("-").map((w) => titleCaseWord(w)).join("-");
+  if (word == null || word === "") return "";
+  const w = typeof word === "string" ? word : String(word);
+  if (!w) return "";
+  if (w.includes("-")) {
+    return w.split("-").map((part) => titleCaseWord(part)).join("-");
   }
-  const m = word.match(/^([^A-Za-z0-9]*)([A-Za-z0-9&]+)([^A-Za-z0-9]*)$/);
-  if (!m) return word;
+  const m = w.match(/^([^A-Za-z0-9]*)([A-Za-z0-9&]+)([^A-Za-z0-9]*)$/);
+  if (!m) return w;
   const [, pre, core, post] = m;
   return `${pre}${titleCaseCore(core)}${post}`;
 }
@@ -117,9 +119,9 @@ function titleCaseWord(word) {
  */
 export function toProperHeadingLabel(raw) {
   if (raw == null) return "";
-  if (typeof raw !== "string") return String(raw);
-  const trimmed = raw.trim();
-  if (!trimmed) return raw;
+  const base = typeof raw === "string" ? raw : String(raw);
+  const trimmed = base.trim();
+  if (!trimmed) return base;
   return trimmed
     .split(/(\s*[·•]\s*)/)
     .map((chunk) => {

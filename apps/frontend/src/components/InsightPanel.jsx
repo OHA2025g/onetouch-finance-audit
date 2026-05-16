@@ -59,7 +59,8 @@ export default function InsightPanel({ section, title = "AI Insights", defaultCo
     load(false);
   }, [load]);
 
-  const isLLM = data?.source && data.source.includes("gemini");
+  const src = data?.source;
+  const isLLM = typeof src === "string" && src.includes("gemini");
   const ageMin = data?.cache_age_sec ? Math.floor(data.cache_age_sec / 60) : 0;
 
   return (

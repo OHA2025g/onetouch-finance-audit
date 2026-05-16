@@ -106,3 +106,35 @@ class TestCfoCommandCenterContracts:
         assert isinstance(body.get("cycles"), dict)
         assert "filters_applied" in body
         assert "as_of" in body
+
+    def test_command_center_bff_contract(self, token):
+        r = requests.get(
+            f"{API}/cfo/command-center",
+            headers=_h(token),
+            params={"entity_code": "US-HQ", "no_cache": True},
+            timeout=60,
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert "cockpit" in body
+        assert isinstance(body.get("hero_kpis"), list)
+        assert isinstance(body.get("ops_kpis"), list)
+        assert isinstance(body.get("action_queue"), dict)
+        assert isinstance(body.get("alerts"), list)
+        assert "what_changed" in body
+        assert "as_of" in body
+        hero = body["hero_kpis"]
+        if hero:
+            assert "id" in hero[0]
+        trends = (body.get("cockpit") or {}).get("trends") or []
+        assert isinstance(trends, list)
+
+    def test_command_center_process_filter(self, token):
+        r = requests.get(
+            f"{API}/cfo/command-center",
+            headers=_h(token),
+            params={"entity_code": "US-HQ", "process": "Record-to-Report", "no_cache": True},
+            timeout=60,
+        )
+        assert r.status_code == 200, r.text
+        assert r.json().get("filters_applied", {}).get("process") == "Record-to-Report"

@@ -2954,6 +2954,37 @@ class TestGovernanceDepthAndComplianceLibraryEntityScope:
             requests.post(f"{API}/system/security-config", headers=_h(tokens["superadmin"]), json=cfg2, timeout=30)
 
 
+class TestFinanceAuditWorkspaceDashboard:
+    """Finance ops ``GET /dashboard/audit`` summary under master entity scope (Phase 7)."""
+
+    def test_audit_summary_shape_and_entity_scope(self, tokens):
+        r0 = requests.get(f"{API}/dashboard/audit", headers=_h(tokens["cfo"]), timeout=30)
+        assert r0.status_code == 200, r0.text
+        base = r0.json()
+        summary = base.get("summary") or {}
+        assert summary.get("audit_readiness_pct") is not None
+        assert isinstance(summary.get("by_process"), list)
+        if summary["by_process"]:
+            assert "control_count" in summary["by_process"][0]
+        heat = summary.get("heatmap") or []
+        if heat:
+            assert "fail_count" in heat[0]
+
+        r1 = requests.get(
+            f"{API}/dashboard/audit",
+            headers=_h(tokens["cfo"]),
+            params={"entity_code": "US-HQ"},
+            timeout=30,
+        )
+        assert r1.status_code == 200, r1.text
+        scoped = r1.json()
+        assert scoped.get("filters_applied", {}).get("entity_code") == "US-HQ"
+        assert "summary" in scoped and "trends" in scoped
+        assert isinstance(scoped.get("recent_runs"), list)
+        for row in scoped["recent_runs"]:
+            assert "US-HQ" in (row.get("entities") or []), row
+
+
 class TestAuditAndDQSurfaces:
     def test_audit_trail_endpoint(self, tokens):
         r = requests.get(f"{API}/masters/audit-trail", headers=_h(tokens["cfo"]), params={"limit": 5}, timeout=30)

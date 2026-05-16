@@ -95,6 +95,7 @@ import GlAuditWorkbenchPage from "./pages/GlAuditWorkbenchPage";
 import JournalRiskWorkbenchPage from "./pages/JournalRiskWorkbenchPage";
 import ReconciliationsWorkbenchPage from "./pages/ReconciliationsWorkbenchPage";
 import BankReconciliationWorkbenchPage from "./pages/BankReconciliationWorkbenchPage";
+import BankReconciliationDetailPage from "./pages/BankReconciliationDetailPage";
 import VendorRiskWorkbenchPage from "./pages/VendorRiskWorkbenchPage";
 import ThreeWayMatchWorkbenchPage from "./pages/ThreeWayMatchWorkbenchPage";
 import O2cAuditWorkbenchPage from "./pages/O2cAuditWorkbenchPage";
@@ -233,6 +234,7 @@ export default function App() {
               <Route path="readiness" element={<ProcessReadinessPage />} />
               <Route path="controller" element={<ControllerDashboard />} />
               <Route path="reconciliations/:reconciliationId" element={<ReconciliationDetailPage />} />
+              <Route path="bank-recon/:statementId" element={<BankReconciliationDetailPage />} />
               <Route path="audit" element={<AuditWorkspace />} />
               <Route path="compliance" element={<ComplianceDashboard />} />
               <Route path="compliance/rpt-dashboard" element={<RelatedPartyWorkbenchPage />} />

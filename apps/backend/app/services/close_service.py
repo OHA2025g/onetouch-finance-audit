@@ -99,11 +99,25 @@ async def create_cycle(db, *, period_ym: str, name: str, created_by: str, entity
 
 
 async def get_cycle(db, cycle_id: str) -> Dict[str, Any]:
+    from app.services import reconciliation_metrics as rm
+
     cyc = await db.close_cycles.find_one({"id": cycle_id}, {"_id": 0})
     if not cyc:
         raise HTTPException(404, "Close cycle not found")
     tasks = [t async for t in db.close_tasks.find({"cycle_id": cycle_id}, {"_id": 0}).sort("critical", -1)]
-    return {**cyc, "tasks": tasks}
+    entity_code = cyc.get("entity_code")
+    period_ym = cyc.get("period_ym")
+    overdue, total = await rm.count_overdue_reconciliations(db, entity_code=entity_code, period_ym=period_ym)
+    return {
+        **cyc,
+        "tasks": tasks,
+        "reconciliation_health": {
+            "reconciliations_overdue": overdue,
+            "reconciliations_total": total,
+            "entity_code": entity_code,
+            "period_ym": period_ym,
+        },
+    }
 
 
 async def list_tasks(db, cycle_id: Optional[str] = None, *, entity_code: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -250,4 +264,29 @@ async def quality_score(db, cycle_id: Optional[str] = None, *, entity_code: Opti
         "total_tasks": total,
         "cycle_id": resolved,
     }
+
+
+async def list_cycle_events(db, cycle_id: str, *, limit: int = 120) -> List[Dict[str, Any]]:
+    """Audit-style timeline for a close cycle (newest first).
+
+    Cycles created before close_events existed may have no rows; synthesize a baseline
+    ``cycle_created`` from the cycle record so the UI timeline is never empty for a valid cycle.
+    """
+    events = [e async for e in db.close_events.find({"cycle_id": cycle_id}, {"_id": 0}).sort("at", -1).limit(limit)]
+    if events:
+        return events
+    cyc = await db.close_cycles.find_one({"id": cycle_id}, {"_id": 0})
+    if not cyc:
+        return []
+    now = _now()
+    baseline = {
+        "id": str(uuid.uuid4()),
+        "cycle_id": cycle_id,
+        "at": cyc.get("created_at") or now,
+        "actor": cyc.get("created_by") or "system",
+        "type": "cycle_created",
+        "detail": {"backfilled": True},
+    }
+    await db.close_events.insert_one(dict(baseline))
+    return [baseline]
 

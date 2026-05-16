@@ -266,6 +266,11 @@ html.dark .bg-grid {
   color: hsl(var(--chart-4));
   background: hsl(var(--chart-4) / 0.12);
 }
+.status-approved {
+  color: hsl(var(--chart-4));
+  background: hsl(var(--chart-4) / 0.14);
+  border: 1px solid hsl(var(--chart-4) / 0.35);
+}
 
 @keyframes pulse-line {
   0%,

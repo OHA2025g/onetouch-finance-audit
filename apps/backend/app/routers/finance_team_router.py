@@ -41,29 +41,47 @@ async def finance_team_workload(
     return await fts.finance_team_workload(db, entity_code=entity_code)
 
 
-@router.get("/sla")
-async def finance_team_sla(
+@router.get("/sla-trend")
+async def finance_team_sla_trend(
+    entity_code: Optional[str] = Query(None),
+    limit: int = Query(12, ge=1, le=36),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
-    return await fts.finance_team_sla(db)
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    return await fts.finance_team_sla_trend(db, entity_code=entity_code, limit=limit)
+
+
+@router.get("/sla")
+async def finance_team_sla(
+    entity_code: Optional[str] = Query(None),
+    current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
+):
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    return await fts.finance_team_sla(db, entity_code=entity_code)
 
 
 @router.get("/rework")
 async def finance_team_rework(
+    entity_code: Optional[str] = Query(None),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
-    return await fts.finance_team_rework(db)
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    return await fts.finance_team_rework(db, entity_code=entity_code)
 
 
 @router.get("/bottlenecks")
 async def finance_team_bottlenecks(
+    entity_code: Optional[str] = Query(None),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
-    return await fts.finance_team_bottlenecks(db)
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    return await fts.finance_team_bottlenecks(db, entity_code=entity_code)
 
 
 @router.get("/scorecards")
 async def finance_team_scorecards(
+    entity_code: Optional[str] = Query(None),
     current=Depends(require_roles("CFO", "Controller", "Internal Auditor", "Compliance Head", "Super Admin")),
 ):
-    return await fts.finance_team_scorecards(db)
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    return await fts.finance_team_scorecards(db, entity_code=entity_code)

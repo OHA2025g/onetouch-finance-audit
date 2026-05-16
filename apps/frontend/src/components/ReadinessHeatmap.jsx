@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { DataTable, DataTableBody, DataTableHead, DataTableRow, DataTableTd, DataTableTh } from "./DataTable";
 
 /** Process × entity readiness grid (shared by CFO cockpit and Risk intelligence hub — Phase 36+). */
-export default function ReadinessHeatmap({ rows, buildDrillHref }) {
+export default function ReadinessHeatmap({ rows, buildDrillHref, onCellClick }) {
   const nav = useNavigate();
 
   if (!rows?.length) {
@@ -17,8 +17,8 @@ export default function ReadinessHeatmap({ rows, buildDrillHref }) {
     );
   }
 
-  const processes = [...new Set(rows.map((r) => r.process))];
-  const entities = [...new Set(rows.map((r) => r.entity))];
+  const processes = [...new Set(rows.map((r) => r.process))].sort((a, b) => String(a).localeCompare(String(b)));
+  const entities = [...new Set(rows.map((r) => r.entity))].sort((a, b) => String(a).localeCompare(String(b)));
   const map = {};
   rows.forEach((r) => {
     map[`${r.entity}::${r.process}`] = r;
@@ -66,8 +66,15 @@ export default function ReadinessHeatmap({ rows, buildDrillHref }) {
                     style={{ background: cellColor(cell?.readiness) }}
                     data-testid={`heatmap-${e}-${p}`}
                     onClick={() => {
-                      const base = `/app/cases?process=${encodeURIComponent(p)}&entity=${encodeURIComponent(e)}`;
-                      nav(typeof buildDrillHref === "function" ? buildDrillHref(p, e) : base);
+                      if (typeof onCellClick === "function") {
+                        onCellClick(p, e, cell);
+                        return;
+                      }
+                      const href =
+                        typeof buildDrillHref === "function"
+                          ? buildDrillHref(p, e)
+                          : `/app/cases?process=${encodeURIComponent(p)}&entity=${encodeURIComponent(e)}`;
+                      if (href) nav(href);
                     }}
                     title={cell ? `${p} · ${e} · open_high=${cell.open_high}` : "—"}
                   >

@@ -74,11 +74,14 @@ def _scope_exceptions(
     period_ym: Optional[str] = None,
     department_id: Optional[str] = None,
     cost_center_id: Optional[str] = None,
+    process: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Merge dashboard exception filters (AND). Omit empty ``base`` so we never AND a bare ``{}``."""
     parts: List[Dict[str, Any]] = []
     if base:
         parts.append(dict(base))
+    if process:
+        parts.append({"process": process})
     if entity_code:
         parts.append({"entity": entity_code})
     if period_ym:
@@ -103,6 +106,25 @@ def _reconciliation_scope(
     if period_ym:
         q["period"] = period_ym
     return q
+
+
+async def _readiness_process_universe(db) -> List[str]:
+    """Distinct process areas for the readiness matrix.
+
+    Phase 1/2 only walked ``controls``; routed exceptions (continuous audit, MDQ, inventory, …)
+    often carry a ``process`` that is not yet represented on a control row, which produced
+    holes in Process × Entity readiness. Union controls + live exceptions + cases.
+    """
+    names: set[str] = set()
+    for cur in (
+        await db.controls.distinct("process"),
+        await db.exceptions.distinct("process"),
+        await db.cases.distinct("process"),
+    ):
+        for p in cur or []:
+            if isinstance(p, str) and p.strip():
+                names.add(p.strip())
+    return sorted(names)
 
 
 def _case_base(entity_code: Optional[str]) -> Dict[str, Any]:
@@ -150,6 +172,7 @@ async def compute_readiness(
     period_ym: Optional[str] = None,
     department_id: Optional[str] = None,
     cost_center_id: Optional[str] = None,
+    process: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Readiness per (entity, process) = weighted score 0–100.
 
@@ -158,35 +181,42 @@ async def compute_readiness(
     out: List[Dict[str, Any]] = []
     entities = [e async for e in db.entities.find({}, {"_id": 0})]
     if entity_code:
-        entities = [e for e in entities if e.get("code") == entity_code]
-    processes = sorted({c["process"] async for c in db.controls.find({}, {"_id": 0, "process": 1})})
+        entities = [e for e in entities if (e.get("code") or e.get("id")) == entity_code]
+    processes = await _readiness_process_universe(db)
+    if process:
+        processes = [p for p in processes if p == process]
 
     for ent in entities:
+        ent_code = ent.get("code") or ent.get("id")
+        if not ent_code:
+            continue
         for proc in processes:
             ex_q = _scope_exceptions(
-                {"process": proc, "entity": ent["code"], "status": {"$ne": "closed"}},
+                {"process": proc, "entity": ent_code, "status": {"$ne": "closed"}},
                 period_ym=period_ym,
                 department_id=department_id,
                 cost_center_id=cost_center_id,
             )
             open_exs = [e async for e in db.exceptions.find(ex_q, {"_id": 0})]
-            open_high = sum(1 for e in open_exs if e["severity"] in ("critical", "high"))
-            exposure = sum(e["financial_exposure"] for e in open_exs)
+            open_high = sum(
+                1 for e in open_exs if str(e.get("severity") or "").lower() in ("critical", "high")
+            )
+            exposure = sum(float(e.get("financial_exposure") or 0) for e in open_exs)
             passed = await db.controls.count_documents({"process": proc, "last_run_pass": True})
             ran = await db.controls.count_documents({"process": proc, "last_run_pass": {"$ne": None}})
             pass_rate = (passed / ran) if ran else 0.6
             recon_component = 1.0
             if proc in ("Treasury", "Record-to-Report"):
-                rq_over: Dict[str, Any] = {"entity": ent["code"], "status": "overdue"}
-                rq_tot: Dict[str, Any] = {"entity": ent["code"]}
+                rq_over: Dict[str, Any] = {"entity": ent_code, "status": "overdue"}
+                rq_tot: Dict[str, Any] = {"entity": ent_code}
                 if period_ym:
                     rq_over["period"] = period_ym
                     rq_tot["period"] = period_ym
                 overdue = await db.reconciliations.count_documents(rq_over)
                 total = await db.reconciliations.count_documents(rq_tot)
                 recon_component = 1.0 - (overdue / total) if total else 0.8
-            ct: Dict[str, Any] = {"process": proc, "entity": ent["code"]}
-            ce: Dict[str, Any] = {"process": proc, "entity": ent["code"], "closed_at": {"$ne": None}}
+            ct: Dict[str, Any] = {"process": proc, "entity": ent_code}
+            ce: Dict[str, Any] = {"process": proc, "entity": ent_code, "closed_at": {"$ne": None}}
             if period_ym:
                 ct["opened_at"] = {"$regex": f"^{period_ym}"}
                 ce["opened_at"] = {"$regex": f"^{period_ym}"}
@@ -199,7 +229,7 @@ async def compute_readiness(
             control_component = pass_rate
             score = 100 * (0.40 * control_component + 0.25 * recon_component + 0.20 * evidence_component + 0.15 * issue_component)
             out.append({
-                "entity": ent["code"],
+                "entity": ent_code,
                 "process": proc,
                 "readiness": round(score, 1),
                 "control_component": round(control_component, 3),
@@ -219,6 +249,7 @@ async def cfo_cockpit(
     period_ym: Optional[str] = None,
     department_id: Optional[str] = None,
     cost_center_id: Optional[str] = None,
+    process: Optional[str] = None,
 ) -> Dict[str, Any]:
     """CFO dashboard; optional filters match Phase 4 ``/dashboard/cfo`` query params."""
     readiness_rows = await compute_readiness(
@@ -227,6 +258,7 @@ async def cfo_cockpit(
         period_ym=period_ym,
         department_id=department_id,
         cost_center_id=cost_center_id,
+        process=process,
     )
     overall_readiness = round(
         sum(r["readiness"] for r in readiness_rows) / max(1, len(readiness_rows)), 1
@@ -238,6 +270,7 @@ async def cfo_cockpit(
         period_ym=period_ym,
         department_id=department_id,
         cost_center_id=cost_center_id,
+        process=process,
     )
     high_crit_exposure = 0.0
     async for e in db.exceptions.find(high_q, {"_id": 0}):
@@ -257,11 +290,13 @@ async def cfo_cockpit(
             period_ym=period_ym,
             department_id=department_id,
             cost_center_id=cost_center_id,
+            process=process,
         )
         async for ex in db.exceptions.find(pq, {"_id": 0, "control_code": 1}):
             per_control[ex["control_code"]] += 1
     else:
-        async for ex in db.exceptions.find({}, {"_id": 0, "control_code": 1}):
+        ex_q_all: Dict[str, Any] = {"process": process} if process else {}
+        async for ex in db.exceptions.find(ex_q_all, {"_id": 0, "control_code": 1}):
             per_control[ex["control_code"]] += 1
     total_findings = sum(per_control.values()) or 1
     repeat = sum(v for v in per_control.values() if v > 1)
@@ -273,6 +308,7 @@ async def cfo_cockpit(
         period_ym=period_ym,
         department_id=department_id,
         cost_center_id=cost_center_id,
+        process=process,
     )
     total_ex = await db.exceptions.count_documents(total_ex_q if total_ex_q else {})
     ev_q = _scope_exceptions(
@@ -281,6 +317,7 @@ async def cfo_cockpit(
         period_ym=period_ym,
         department_id=department_id,
         cost_center_id=cost_center_id,
+        process=process,
     )
     evidenced = await db.exceptions.count_documents(ev_q)
     evidence_pct = 100.0 * evidenced / total_ex if total_ex else 80.0
@@ -305,6 +342,8 @@ async def cfo_cockpit(
     top_failing_out = []
     for code, count in top_failing:
         c = await db.controls.find_one({"code": code}, {"_id": 0})
+        if c and process and c.get("process") != process:
+            continue
         if c:
             top_failing_out.append({
                 "code": code,
@@ -320,6 +359,7 @@ async def cfo_cockpit(
         period_ym=period_ym,
         department_id=department_id,
         cost_center_id=cost_center_id,
+        process=process,
     )
     top_risks: List[Dict[str, Any]] = []
     async for e in db.exceptions.find(tr_q, {"_id": 0}):
@@ -331,6 +371,7 @@ async def cfo_cockpit(
         "period_ym": period_ym,
         "department_id": department_id,
         "cost_center_id": cost_center_id,
+        "process": process,
     }.items() if v}
 
     return {
@@ -353,6 +394,7 @@ async def cfo_cockpit(
             period_ym=period_ym,
             department_id=department_id,
             cost_center_id=cost_center_id,
+            process=process,
         ),
         "filters_applied": filters_applied,
     }
@@ -365,14 +407,29 @@ async def _readiness_trend(
     period_ym: Optional[str] = None,
     department_id: Optional[str] = None,
     cost_center_id: Optional[str] = None,
+    process: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Build a synthetic 8-week trend from current readiness (slightly decaying going back)."""
+    """Build a synthetic 8-week trend from current readiness (fallback when snapshots sparse)."""
+    from app.services import kpi_snapshot_service as kss
+
+    stored = await kss.fetch_weekly_trends(
+        db,
+        entity_code=entity_code,
+        period_ym=period_ym,
+        department_id=department_id,
+        cost_center_id=cost_center_id,
+        process=process,
+    )
+    if len(stored) >= 2:
+        return stored
+
     readiness = await compute_readiness(
         db,
         entity_code=entity_code,
         period_ym=period_ym,
         department_id=department_id,
         cost_center_id=cost_center_id,
+        process=process,
     )
     avg = sum(r["readiness"] for r in readiness) / max(1, len(readiness))
     now = datetime.now(timezone.utc)
@@ -435,9 +492,12 @@ async def controller_dashboard(
             cost_center_id=cost_center_id,
         )
     )
+    from app.services import reconciliation_metrics as _rm
+
+    recon_overdue, recon_total = await _rm.count_overdue_reconciliations(
+        db, entity_code=entity_code, period_ym=period_ym
+    )
     rscope = _reconciliation_scope(entity_code, period_ym)
-    recon_total = await db.reconciliations.count_documents(rscope if rscope else {})
-    recon_overdue = await db.reconciliations.count_documents({**rscope, "status": "overdue"} if rscope else {"status": "overdue"})
     recons = [
         r async for r in db.reconciliations.find(rscope if rscope else {}, {"_id": 0}).sort("due_date", -1).limit(50)
     ]
@@ -942,10 +1002,13 @@ async def audit_workspace(
     period_ym: Optional[str] = None,
     department_id: Optional[str] = None,
     cost_center_id: Optional[str] = None,
+    trend_days: int = 30,
 ) -> Dict[str, Any]:
     """Audit workspace; ``period_ym`` scopes recent test runs by ``run_ts`` prefix (ISO).
     ``entity_code`` scopes runs to documents whose ``entities`` array contains that code (Phase 7).
     Control catalog stays global; control detail API scopes open exceptions."""
+    from app.services.audit_workspace_service import build_audit_workspace_summary, build_audit_workspace_trends
+
     controls = [c async for c in db.controls.find({}, {"_id": 0}).sort("code", 1)]
     run_q: Dict[str, Any] = {}
     if period_ym:
@@ -959,7 +1022,29 @@ async def audit_workspace(
         "department_id": department_id,
         "cost_center_id": cost_center_id,
     }.items() if v}
-    return {"controls": controls, "recent_runs": runs, "filters_applied": filters_applied}
+    summary = await build_audit_workspace_summary(
+        db,
+        controls,
+        entity_code=entity_code,
+        period_ym=period_ym,
+        department_id=department_id,
+        cost_center_id=cost_center_id,
+    )
+    trends = await build_audit_workspace_trends(
+        db,
+        days=trend_days,
+        entity_code=entity_code,
+        period_ym=period_ym,
+        department_id=department_id,
+        cost_center_id=cost_center_id,
+    )
+    return {
+        "controls": controls,
+        "recent_runs": runs,
+        "filters_applied": filters_applied,
+        "summary": summary,
+        "trends": trends,
+    }
 
 
 async def evidence_graph(db, exception_id: str) -> Dict[str, Any]:

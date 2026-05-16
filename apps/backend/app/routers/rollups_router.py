@@ -102,6 +102,47 @@ async def rollups_recompute(
     return await rs.recompute_snapshots(db)
 
 
+@router.get("/snapshots/history")
+async def rollup_snapshots_history(
+    node_id: str = Query(..., description="Hierarchy node id"),
+    limit: int = Query(48, ge=2, le=120),
+    entity_code: Optional[str] = Query(None, description="Legal entity key; enforced when RBAC entity scope is on."),
+    current=Depends(get_current_user),
+):
+    await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    await _enforce_rollups_node_scope(db, current, node_id)
+    return await rs.rollup_snapshot_history(db, node_id, limit=limit)
+
+
+@router.get("/chart/hierarchy")
+async def rollup_chart_hierarchy(
+    node_id: str = Query(..., description="Parent hierarchy node"),
+    metric: str = Query("unresolved_high_risk_exposure"),
+    entity_code: Optional[str] = Query(None, description="Legal entity key; enforced when RBAC entity scope is on."),
+    current=Depends(get_current_user),
+):
+    await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    await _enforce_rollups_node_scope(db, current, node_id)
+    d = await rs.rollup_chart_hierarchy(db, node_id, metric_key=metric)
+    if d.get("error"):
+        raise HTTPException(404, d.get("message", "Not found"))
+    return d
+
+
+@router.get("/chart/scatter")
+async def rollup_chart_scatter(
+    node_id: str = Query(..., description="Roll up leaf entities under this node"),
+    entity_code: Optional[str] = Query(None, description="Legal entity key; enforced when RBAC entity scope is on."),
+    current=Depends(get_current_user),
+):
+    await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    await _enforce_rollups_node_scope(db, current, node_id)
+    d = await rs.rollup_chart_scatter_entities(db, node_id)
+    if d.get("error"):
+        raise HTTPException(404, d.get("message", "Not found"))
+    return d
+
+
 @router.get("/currency-rates")
 async def reporting_currency_rates(current=Depends(get_current_user)):
     return {

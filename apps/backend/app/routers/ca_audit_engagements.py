@@ -13,6 +13,8 @@ from app.core.entity_scope import entity_scope_enforced
 from app.deps import audit_log, db, iso
 from app.schemas import ca_audit as sch
 from app.services.rbac_service import assert_engagement_entity_scope, enforce_entity_scope
+from app.routers import ca_audit_modules as cam
+from app.services import ca_executive_review_service as ca_exec_rev
 
 router = APIRouter(tags=["ca-audit"])
 
@@ -233,6 +235,25 @@ async def planning_metrics(
     )
 
 
+@router.get("/audit-engagements/executive-review-cross-org")
+async def executive_review_cross_org(
+    limit: int = Query(6, ge=1, le=20),
+    pool: int = Query(40, ge=6, le=80),
+    entity_code: Optional[str] = Query(None, description="Optional legal entity hint; enforced when RBAC entity scope is on."),
+    current=Depends(get_current_user),
+):
+    """Portfolio slice for CFO hub: lowest continuous assurance & critical-case pressure first."""
+    await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    eng_q: Dict[str, Any] = {}
+    if await entity_scope_enforced(db) and current.get("role") != "Super Admin":
+        user = await db.users.find_one({"id": current.get("user_id")}, {"_id": 0, "entity": 1})
+        ue = (user or {}).get("entity")
+        if ue:
+            eng_q["entity_code"] = ue
+    rows = [d async for d in db.audit_engagements.find(eng_q, {"_id": 0}).sort("updated_at", -1).limit(pool)]
+    return await ca_exec_rev.cross_org_executive_summary(db, rows, cam._compute_continuous_assurance, limit)
+
+
 @router.get("/audit-engagements/{engagement_id}")
 async def get_engagement(request: Request, engagement_id: str, current=Depends(get_current_user)):
     return _normalize_engagement_doc(await _engagement_or_404(engagement_id, current=current, request=request))
@@ -319,6 +340,7 @@ async def delete_engagement(request: Request, engagement_id: str, current=Depend
         "ca_final_reports",
         "ca_management_letters",
         "ca_mgmt_repr",
+        "ca_assurance_snapshots",
     ):
         try:
             await db[coll].delete_many({"engagement_id": eid})

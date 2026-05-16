@@ -1,0 +1,391 @@
+@import url('https://fonts.googleapis.com/css2?family=Chivo:wght@300;400;700;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 96%;
+    --foreground: 240 6% 6%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 6% 6%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 6% 6%;
+    --primary: 213 100% 33%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 92%;
+    --secondary-foreground: 240 6% 6%;
+    --muted: 240 5% 92%;
+    --muted-foreground: 240 4% 35%;
+    --accent: 240 5% 92%;
+    --accent-foreground: 240 6% 6%;
+    --destructive: 0 73% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 213 100% 33%;
+    --chart-1: 213 100% 33%;
+    --chart-2: 0 73% 51%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 158 84% 35%;
+    --chart-5: 261 51% 51%;
+    --radius: 0.125rem;
+    --wow-accent-a: 261 51% 51%;
+    --wow-accent-b: 213 100% 33%;
+    --wow-accent-c: 158 84% 35%;
+    --wow-shadow: 0 18px 60px hsl(240 6% 6% / 0.12);
+    --wow-shadow-soft: 0 10px 30px hsl(240 6% 6% / 0.08);
+  }
+
+  .dark {
+    --background: 240 6% 6%;
+    --foreground: 0 0% 98%;
+    --card: 240 4% 10%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 4% 10%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 240 6% 6%;
+    --secondary: 240 4% 16%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 5% 63%;
+    --accent: 240 4% 16%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 217 91% 60%;
+    --chart-1: 217 91% 60%;
+    --chart-2: 0 84% 60%;
+    --chart-3: 38 96% 56%;
+    --chart-4: 158 64% 45%;
+    --chart-5: 261 71% 65%;
+    --wow-accent-a: 261 71% 65%;
+    --wow-accent-b: 217 91% 60%;
+    --wow-accent-c: 158 64% 45%;
+    --wow-shadow: 0 18px 60px hsl(0 0% 0% / 0.45);
+    --wow-shadow-soft: 0 10px 30px hsl(0 0% 0% / 0.25);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    margin: 0;
+    min-height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    margin: 0;
+    min-height: 100vh;
+    font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  #root {
+    @apply min-h-screen bg-background text-foreground;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  .font-display {
+    font-family: 'Chivo', system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  code,
+  pre,
+  .crt-num {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-feature-settings: "liga" 0;
+  }
+}
+
+.font-body {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+/* Legacy utility: same display face as headings (Cabinet → Chivo migration) */
+.font-heading {
+  font-family: 'Chivo', system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@layer components {
+  .crt-card {
+    @apply bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-sm shadow-none transition-colors;
+  }
+
+  .crt-overline {
+    @apply text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400;
+  }
+
+  .crt-table tr:nth-child(even) {
+    @apply bg-zinc-50 dark:bg-zinc-900/50;
+  }
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+::selection {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+/* Grid background utility */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, hsl(var(--border) / 0.55) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(var(--border) / 0.55) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Noise overlay */
+.noise::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+}
+
+/* Severity pills */
+.sev-critical {
+  color: hsl(var(--destructive));
+  background: hsl(var(--destructive) / 0.12);
+  border: 1px solid hsl(var(--destructive) / 0.35);
+}
+.sev-high {
+  color: hsl(var(--chart-3));
+  background: hsl(var(--chart-3) / 0.12);
+  border: 1px solid hsl(var(--chart-3) / 0.35);
+}
+.sev-medium {
+  color: hsl(45 93% 47%);
+  background: hsl(45 93% 47% / 0.1);
+  border: 1px solid hsl(45 93% 47% / 0.28);
+}
+.sev-low {
+  color: hsl(var(--chart-4));
+  background: hsl(var(--chart-4) / 0.1);
+  border: 1px solid hsl(var(--chart-4) / 0.28);
+}
+
+.status-open {
+  color: hsl(var(--chart-3));
+  background: hsl(var(--chart-3) / 0.1);
+}
+.status-in_progress {
+  color: hsl(var(--chart-1));
+  background: hsl(var(--chart-1) / 0.12);
+}
+.status-closed {
+  color: hsl(var(--chart-4));
+  background: hsl(var(--chart-4) / 0.12);
+}
+
+@keyframes pulse-line {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.pulse-dot {
+  animation: pulse-line 1.6s ease-in-out infinite;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  animation: fade-up 0.2s ease-out both;
+}
+
+.beam-border {
+  position: relative;
+}
+.beam-border::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border: 1px solid hsl(var(--primary) / 0.35);
+  pointer-events: none;
+}
+
+tr.row-hover:hover td {
+  background: hsl(var(--muted));
+}
+
+.insight-panel {
+  @apply bg-card text-card-foreground border border-border;
+}
+
+.insight-panel-accent {
+  background: linear-gradient(180deg, hsl(var(--primary) / 0.08) 0%, transparent 100%);
+  border-left: 2px solid hsl(var(--primary));
+}
+
+/* Decorative “wow” layer (uses theme tokens) */
+.wow-bg {
+  position: relative;
+  isolation: isolate;
+}
+.wow-bg::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -2;
+  background:
+    radial-gradient(900px 500px at 15% 10%, hsl(var(--wow-accent-a) / 0.2), transparent 55%),
+    radial-gradient(800px 520px at 85% 20%, hsl(var(--wow-accent-b) / 0.16), transparent 55%),
+    radial-gradient(760px 520px at 50% 92%, hsl(var(--wow-accent-c) / 0.12), transparent 55%);
+  filter: saturate(1.12);
+  pointer-events: none;
+}
+.wow-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, hsl(var(--background) / 0), hsl(var(--foreground) / 0.06));
+  pointer-events: none;
+}
+
+.dark .wow-bg::after {
+  background: linear-gradient(180deg, hsl(0 0% 0% / 0), hsl(0 0% 0% / 0.35));
+}
+
+.wow-card {
+  @apply rounded-md border bg-card/85 backdrop-blur-md;
+  border-color: hsl(var(--border) / 0.85);
+  box-shadow: var(--wow-shadow-soft);
+}
+
+.wow-card:hover {
+  border-color: hsl(var(--ring) / 0.45);
+}
+
+.wow-ring {
+  position: relative;
+}
+.wow-ring::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: calc(var(--radius) + 6px);
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    hsl(var(--chart-5) / 0.55),
+    hsl(var(--chart-1) / 0.45),
+    hsl(var(--chart-4) / 0.4)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.wow-text-gradient {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--foreground)),
+    hsl(var(--foreground) / 0.82),
+    hsl(var(--foreground) / 0.92)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.wow-badge {
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border) / 0.85);
+  background: hsl(var(--card) / 0.75);
+  box-shadow: var(--wow-shadow-soft);
+}
+
+@keyframes wow-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes wow-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+.wow-float {
+  animation: wow-float 5s ease-in-out infinite;
+}
+
+.wow-shimmer {
+  background-size: 200% 200%;
+  animation: wow-shimmer 7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wow-float {
+    animation: none;
+  }
+  .wow-shimmer {
+    animation: none;
+  }
+}

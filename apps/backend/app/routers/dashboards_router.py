@@ -22,6 +22,7 @@ async def dashboard_cfo(
     period_ym: Optional[str] = Query(None, description="YYYY-MM — filter exceptions by detected_at prefix and cases by opened_at"),
     department_id: Optional[str] = Query(None, description="Optional department id on exceptions"),
     cost_center_id: Optional[str] = Query(None, description="Optional cost center id on exceptions"),
+    process: Optional[str] = Query(None, description="Finance process filter (server-side)"),
     current=Depends(get_current_user),
 ):
     entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
@@ -31,6 +32,7 @@ async def dashboard_cfo(
         period_ym=period_ym,
         department_id=department_id,
         cost_center_id=cost_center_id,
+        process=process,
     )
 
 
@@ -98,11 +100,36 @@ async def dashboard_audit(
     period_ym: Optional[str] = Query(None, description="YYYY-MM — scope recent test runs by run_ts prefix"),
     department_id: Optional[str] = Query(None),
     cost_center_id: Optional[str] = Query(None),
+    trend_days: int = Query(30, ge=7, le=90, description="Days of exception/run trend series"),
     current=Depends(get_current_user),
 ):
     entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     return await audit_workspace(
         db,
+        entity_code=entity_code,
+        period_ym=period_ym,
+        department_id=department_id,
+        cost_center_id=cost_center_id,
+        trend_days=trend_days,
+    )
+
+
+@router.get("/dashboard/audit/trends")
+async def dashboard_audit_trends(
+    entity_code: Optional[str] = Query(None),
+    period_ym: Optional[str] = Query(None),
+    department_id: Optional[str] = Query(None),
+    cost_center_id: Optional[str] = Query(None),
+    days: int = Query(30, ge=7, le=90),
+    current=Depends(get_current_user),
+):
+    """Optional lightweight trends refresh (same payload as ``trends`` on main audit dashboard)."""
+    from app.services.audit_workspace_service import build_audit_workspace_trends
+
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    return await build_audit_workspace_trends(
+        db,
+        days=days,
         entity_code=entity_code,
         period_ym=period_ym,
         department_id=department_id,
@@ -208,7 +235,7 @@ async def dashboard_my_cases(
     cost_center_id: Optional[str] = Query(None, description="Phase 9 — filter by denormalized cost_center_id / cc_id"),
     current=Depends(get_current_user),
 ):
-    from app.services.case_service import merge_cases_master_filters
+    from app.services.case_service import hydrate_case_rows_financial_exposure, merge_cases_master_filters
 
     entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     q = merge_cases_master_filters(
@@ -218,7 +245,8 @@ async def dashboard_my_cases(
         department_id=department_id,
         cost_center_id=cost_center_id,
     )
-    cases = [c async for c in db.cases.find(q, {"_id": 0}).sort("due_date", 1)]
+    cases = [dict(c) async for c in db.cases.find(q, {"_id": 0}).sort("due_date", 1)]
+    await hydrate_case_rows_financial_exposure(db, cases)
     open_count = sum(1 for c in cases if c["status"] != "closed")
     overdue = 0
     now = datetime.now(timezone.utc)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from app.auth import get_current_user
 from app.deps import audit_log, db
@@ -993,19 +993,37 @@ async def treasury_cash_forecast_13w(entity_code: Optional[str] = Query(None), c
     return {**data, "note": "Alias endpoint; prefer /treasury/forecast-13-week"}
 
 
+def _budget_governance_summary(items: list[Dict[str, Any]]) -> Dict[str, int]:
+    return {
+        "uploads": len(items),
+        "draft": sum(1 for v in items if (v.get("status") or "draft") == "draft"),
+        "approved": sum(1 for v in items if v.get("status") == "approved"),
+        "locked": sum(1 for v in items if v.get("locked")),
+    }
+
+
 @budget_router.get("/versions")
 async def budget_versions(
     entity_code: Optional[str] = Query(None),
     current=Depends(get_current_user),
 ):
-    """Immutable budget versions (Wave 2 data model placeholder)."""
+    """Budget versions with governance counts (upload / approve / lock)."""
     entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     cur = db.budget_versions.find(
         {"entity": entity_code} if entity_code else {},
         {"_id": 0},
     ).sort("created_at", -1).limit(50)
     items = [v async for v in cur]
-    return {"items": items, "count": len(items), "as_of": as_of_now(), "note": "Seed budget_versions in Mongo for full workflow."}
+    gov = _budget_governance_summary(items)
+    out: Dict[str, Any] = {
+        "items": items,
+        "count": len(items),
+        "governance": gov,
+        "as_of": as_of_now(),
+    }
+    if not items:
+        out["note"] = "No budget versions in scope. Create a draft via POST /budget/upload or the form on this page."
+    return out
 
 
 @budget_router.get("")
@@ -1013,14 +1031,21 @@ async def budget_list(entity_code: Optional[str] = Query(None), current=Depends(
     entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
     cur = db.budget_versions.find({"entity": entity_code} if entity_code else {}, {"_id": 0}).sort("created_at", -1).limit(50)
     items = [v async for v in cur]
-    return {"items": items, "count": len(items), "as_of": as_of_now()}
+    return {
+        "items": items,
+        "count": len(items),
+        "governance": _budget_governance_summary(items),
+        "as_of": as_of_now(),
+    }
 
 
 @budget_router.post("/upload")
-async def budget_upload(body: Dict[str, Any], current=Depends(get_current_user)):
+async def budget_upload(body: Dict[str, Any] = Body(...), current=Depends(get_current_user)):
     be = body.get("entity") or body.get("entity_code")
     if be and str(be).strip():
-        await enforce_entity_scope(db, current=current, requested_entity_code=str(be))
+        entity_norm = str(be).strip()
+        await enforce_entity_scope(db, current=current, requested_entity_code=entity_norm)
+        body["entity"] = entity_norm
     lines = body.get("lines")
     if lines is not None:
         if not isinstance(lines, list):
@@ -1268,9 +1293,15 @@ async def budget_get(budget_id: str, current=Depends(get_current_user)):
 
 @budget_router.post("/{budget_id}/approve")
 async def budget_approve(budget_id: str, current=Depends(get_current_user)):
-    b = await db.budget_versions.find_one({"id": budget_id}, {"_id": 0, "entity": 1})
-    if b and b.get("entity"):
+    b = await db.budget_versions.find_one({"id": budget_id}, {"_id": 0, "entity": 1, "status": 1, "locked": 1})
+    if not b:
+        raise HTTPException(404, "Budget not found")
+    if b.get("entity"):
         await enforce_entity_scope(db, current=current, requested_entity_code=b.get("entity"))
+    if b.get("locked"):
+        raise HTTPException(409, "Budget is locked; unlock before changing approval")
+    if b.get("status") == "approved":
+        return {"status": "ok", "matched": 1, "modified": 0, "as_of": as_of_now(), "already_approved": True}
     res = await db.budget_versions.update_one(
         {"id": budget_id},
         {"$set": {"status": "approved", "approved_by": current.get("email"), "approved_at": as_of_now()}},
@@ -1281,9 +1312,15 @@ async def budget_approve(budget_id: str, current=Depends(get_current_user)):
 
 @budget_router.post("/{budget_id}/lock")
 async def budget_lock(budget_id: str, current=Depends(get_current_user)):
-    b = await db.budget_versions.find_one({"id": budget_id}, {"_id": 0, "entity": 1})
-    if b and b.get("entity"):
+    b = await db.budget_versions.find_one({"id": budget_id}, {"_id": 0, "entity": 1, "status": 1, "locked": 1})
+    if not b:
+        raise HTTPException(404, "Budget not found")
+    if b.get("entity"):
         await enforce_entity_scope(db, current=current, requested_entity_code=b.get("entity"))
+    if b.get("locked"):
+        return {"status": "ok", "matched": 1, "modified": 0, "as_of": as_of_now(), "already_locked": True}
+    if b.get("status") != "approved":
+        raise HTTPException(409, "Approve the budget before locking")
     res = await db.budget_versions.update_one(
         {"id": budget_id},
         {"$set": {"locked": True, "locked_at": as_of_now(), "locked_by": current.get("email")}},
@@ -1294,9 +1331,13 @@ async def budget_lock(budget_id: str, current=Depends(get_current_user)):
 
 @budget_router.post("/{budget_id}/unlock")
 async def budget_unlock(budget_id: str, current=Depends(get_current_user)):
-    b = await db.budget_versions.find_one({"id": budget_id}, {"_id": 0, "entity": 1})
-    if b and b.get("entity"):
+    b = await db.budget_versions.find_one({"id": budget_id}, {"_id": 0, "entity": 1, "locked": 1})
+    if not b:
+        raise HTTPException(404, "Budget not found")
+    if b.get("entity"):
         await enforce_entity_scope(db, current=current, requested_entity_code=b.get("entity"))
+    if not b.get("locked"):
+        return {"status": "ok", "matched": 1, "modified": 0, "as_of": as_of_now(), "already_unlocked": True}
     res = await db.budget_versions.update_one(
         {"id": budget_id},
         {"$set": {"locked": False, "unlocked_at": as_of_now(), "unlocked_by": current.get("email")}},

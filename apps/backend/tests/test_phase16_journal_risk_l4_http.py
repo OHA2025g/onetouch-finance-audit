@@ -46,12 +46,24 @@ class TestJournalRiskContracts:
         assert rr.status_code == 200, rr.text
         assert rr.json().get("items"), "expected default rules"
 
+        sm = requests.get(f"{API}/journals/risk-summary", headers=_h(token), timeout=30)
+        assert sm.status_code == 200, sm.text
+        body = sm.json()
+        assert "kpis" in body
+        assert "rule_hits" in body
+        kpis = body["kpis"]
+        assert "high_count" in kpis
+        assert "unreviewed_high_count" in kpis
+        assert isinstance(body.get("rule_hits"), list)
+
         li = requests.get(f"{API}/journals", headers=_h(token), params={"limit": 5, "offset": 0}, timeout=30)
         assert li.status_code == 200, li.text
         items = li.json().get("items") or []
         assert items
         je_id = items[0]["id"]
         assert "risk_score" in items[0]
+        assert "rules_hit" in items[0]
+        assert "reviewed" in items[0]
 
         hi = requests.get(f"{API}/journals/high-risk", headers=_h(token), params={"limit": 5}, timeout=30)
         assert hi.status_code == 200, hi.text
@@ -68,4 +80,22 @@ class TestJournalRiskContracts:
         smp = requests.post(f"{API}/journals/sample", headers=_h(token), json={"n": 5, "risk_band": "high"}, timeout=30)
         assert smp.status_code == 200, smp.text
         assert isinstance(smp.json().get("items"), list)
+
+    def test_sap_shaped_journal_row_normalizes_and_scores(self, token):
+        """Connector-style rows (amount, SAP-JRN-*) must score via list API normalization."""
+        li = requests.get(
+            f"{API}/journals",
+            headers=_h(token),
+            params={"limit": 100, "offset": 0},
+            timeout=30,
+        )
+        assert li.status_code == 200, li.text
+        sap = [j for j in (li.json().get("items") or []) if str(j.get("journal_number") or "").startswith("SAP-JRN")]
+        if not sap:
+            pytest.skip("No SAP-JRN rows in DB; run SAP connector journal sync to verify integration")
+        row = sap[0]
+        assert row.get("total_amount") is not None
+        assert "risk_score" in row
+        if str(row.get("journal_number")) == "SAP-JRN-2":
+            assert int(row.get("risk_score") or 0) >= 55
 

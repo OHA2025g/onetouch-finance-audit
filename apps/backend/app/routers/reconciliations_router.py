@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_user
 from app.deps import audit_log, db
+from app.services import reconciliation_metrics as rm
 from app.services.kpi_service import as_of_now
 from app.services.rbac_service import enforce_entity_scope
 
@@ -29,16 +31,14 @@ async def recon_list(
     current=Depends(get_current_user),
 ):
     entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
-    q: Dict[str, Any] = {}
-    if entity_code:
-        q["entity"] = entity_code
-    if period_ym:
-        q["period"] = period_ym
+    q = rm.recon_query(entity_code, period_ym)
     if status:
         q["status"] = status
     cur = db.reconciliations.find(q, {"_id": 0}).sort("due_date", -1).skip(offset).limit(limit)
-    items = [r async for r in cur]
-    total = await db.reconciliations.count_documents(q)
+    raw = [r async for r in cur]
+    total = await db.reconciliations.count_documents(q or {})
+    now = datetime.now(timezone.utc)
+    items = [rm.enrich_reconciliation(r, now=now) for r in raw]
     return {"items": items, "total": total, "limit": limit, "offset": offset, "as_of": _now()}
 
 
@@ -62,6 +62,30 @@ async def recon_create(body: Dict[str, Any], current=Depends(get_current_user)):
     return {"status": "ok", "reconciliation_id": rid, "as_of": _now()}
 
 
+@router.get("/summary")
+async def recon_summary(
+    entity_code: Optional[str] = Query(None),
+    period_ym: Optional[str] = Query(None),
+    scan_limit: int = Query(2000, ge=1, le=5000),
+    current=Depends(get_current_user),
+):
+    """Aggregated reconciliation KPIs for the management suite workbench."""
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    summary = await rm.fetch_reconciliation_summary(
+        db,
+        entity_code=entity_code,
+        period_ym=period_ym,
+        scan_limit=scan_limit,
+    )
+    return {
+        **summary,
+        "entity_code": entity_code,
+        "period_ym": period_ym,
+        "scan_limit": scan_limit,
+        "as_of": _now(),
+    }
+
+
 @router.get("/{reconciliation_id}")
 async def recon_get(reconciliation_id: str, current=Depends(get_current_user)):
     r = await db.reconciliations.find_one({"id": reconciliation_id}, {"_id": 0})
@@ -69,7 +93,19 @@ async def recon_get(reconciliation_id: str, current=Depends(get_current_user)):
         raise HTTPException(404, "Reconciliation not found")
     if r.get("entity"):
         await enforce_entity_scope(db, current=current, requested_entity_code=r.get("entity"))
-    return {"reconciliation": r, "as_of": _now()}
+    ent = r.get("entity")
+    related_journal = None
+    if ent:
+        batch = await db.journals.find({"entity": ent}, {"_id": 0}).sort("posting_date", -1).limit(1).to_list(length=1)
+        related_journal = batch[0] if batch else None
+    rec = rm.enrich_reconciliation(r)
+    linked_case = await rm.load_linked_case(db, reconciliation_id, r)
+    return {
+        "reconciliation": rec,
+        "related_journal": related_journal,
+        "linked_case": linked_case,
+        "as_of": _now(),
+    }
 
 
 @router.patch("/{reconciliation_id}")
@@ -162,8 +198,6 @@ async def recon_reopen(reconciliation_id: str, body: Dict[str, Any], current=Dep
 @router.post("/{reconciliation_id}/create-case")
 async def recon_create_case(reconciliation_id: str, body: Dict[str, Any], current=Depends(get_current_user)):
     cid = f"case-rec-{__import__('uuid').uuid4().hex[:10]}"
-    # Create a fully-shaped CaseOut-compatible document to avoid downstream 500s
-    # when `/cases` serializes existing Mongo docs.
     now = _now()
     rec = await db.reconciliations.find_one({"id": reconciliation_id}, {"_id": 0}) or {}
     entity = body.get("entity") or rec.get("entity") or current.get("entity") or "US-HQ"
@@ -173,7 +207,6 @@ async def recon_create_case(reconciliation_id: str, body: Dict[str, Any], curren
     due_date = body.get("due_date") or rec.get("due_date") or now
 
     ex_id = f"rec-{reconciliation_id}"
-    # Ensure linked ExceptionOut exists for case detail paths that join exceptions.
     ex_doc = {
         "id": ex_id,
         "control_id": "C-REC-001",
@@ -226,6 +259,16 @@ async def recon_create_case(reconciliation_id: str, body: Dict[str, Any], curren
         "cost_center_id": ex_doc.get("cost_center_id"),
     }
     await db.cases.insert_one(dict(payload))
+    await db.reconciliations.update_one(
+        {"id": reconciliation_id},
+        {
+            "$set": {
+                "case_id": cid,
+                "exception_id": ex_id,
+                "updated_at": now,
+            },
+            "$push": {"logs": {"at": now, "by": current.get("email"), "action": "create_case", "case_id": cid}},
+        },
+    )
     await audit_log(current["email"], "reconciliation_create_case", "case", cid, {"reconciliation_id": reconciliation_id})
     return {"status": "ok", "case_id": cid, "as_of": _now()}
-

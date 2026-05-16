@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import get_current_user
+from app.connectors.adapters._normalize import normalize_journal
 from app.deps import audit_log, db
 from app.services.kpi_service import as_of_now
 from app.services.rbac_service import enforce_entity_scope
@@ -80,6 +81,12 @@ def _matches_when(je: Dict[str, Any], when: Dict[str, Any]) -> bool:
     return True
 
 
+def _scored_journal(je: Dict[str, Any], rules: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Normalize ERP/seed aliases then attach risk_score, risk_band, hits."""
+    norm = normalize_journal(je)
+    return {**norm, **_score_je(norm, rules)}
+
+
 def _score_je(je: Dict[str, Any], rules: List[Dict[str, Any]]) -> Dict[str, Any]:
     score = 0
     hits = []
@@ -110,6 +117,148 @@ def _score_je(je: Dict[str, Any], rules: List[Dict[str, Any]]) -> Dict[str, Any]
     return {"risk_score": score, "risk_band": band, "hits": hits}
 
 
+def _backdated_days(je: Dict[str, Any]) -> int:
+    posting = _parse_dt(je.get("posting_date"))
+    created = _parse_dt(je.get("created_at"))
+    if posting and created:
+        return max(0, (created - posting).days)
+    return 0
+
+
+async def _reviewed_je_ids(je_ids: List[str]) -> set[str]:
+    if not je_ids:
+        return set()
+    reviewed: set[str] = set()
+    async for rev in db.journal_reviews.find({"je_id": {"$in": je_ids}}, {"je_id": 1, "_id": 0}):
+        je_id = rev.get("je_id")
+        if je_id:
+            reviewed.add(str(je_id))
+    return reviewed
+
+
+def _enrich_scored_row(scored: Dict[str, Any], reviewed_ids: set[str]) -> Dict[str, Any]:
+    hits = scored.get("hits") or []
+    je_id = str(scored.get("id") or "")
+    return {
+        **scored,
+        "hit_count": len(hits),
+        "rules_hit": [h.get("rule_id") for h in hits if h.get("rule_id")],
+        "backdated_days": _backdated_days(scored),
+        "reviewed": je_id in reviewed_ids,
+    }
+
+
+def _journal_query(entity_code: Optional[str], period_ym: Optional[str]) -> Dict[str, Any]:
+    q: Dict[str, Any] = {}
+    if entity_code:
+        q["entity"] = entity_code
+    if period_ym and str(period_ym).strip():
+        q["posting_date"] = {"$regex": f"^{str(period_ym).strip()}"}
+    return q
+
+
+async def _fetch_scored_journals(
+    *,
+    entity_code: Optional[str],
+    period_ym: Optional[str],
+    scan_limit: int,
+) -> tuple[List[Dict[str, Any]], int, List[Dict[str, Any]]]:
+    q = _journal_query(entity_code, period_ym)
+    cur = db.journals.find(q, {"_id": 0}).sort("posting_date", -1).limit(scan_limit)
+    items = [j async for j in cur]
+    total = await db.journals.count_documents(q)
+    rules = await _get_rules()
+    reviewed_ids = await _reviewed_je_ids([str(j.get("id")) for j in items if j.get("id")])
+    scored = [_enrich_scored_row(_scored_journal(j, rules), reviewed_ids) for j in items]
+    return scored, total, rules
+
+
+def _build_risk_summary(
+    scored: List[Dict[str, Any]],
+    total: int,
+    rules: List[Dict[str, Any]],
+    reviewed_ids: set[str],
+) -> Dict[str, Any]:
+    high = [j for j in scored if j.get("risk_band") == "high"]
+    medium = [j for j in scored if j.get("risk_band") == "medium"]
+    low = [j for j in scored if j.get("risk_band") == "low"]
+    scores = [int(j.get("risk_score") or 0) for j in scored]
+
+    rule_hit_counts: Dict[str, int] = {}
+    rule_names = {str(r.get("id")): r.get("name") for r in rules}
+    rule_weights = {str(r.get("id")): r.get("weight") for r in rules}
+    for j in scored:
+        for h in j.get("hits") or []:
+            rid = h.get("rule_id")
+            if rid:
+                rule_hit_counts[str(rid)] = rule_hit_counts.get(str(rid), 0) + 1
+
+    rule_hits: List[Dict[str, Any]] = []
+    seen_rules = set(rule_hit_counts.keys())
+    for rid, cnt in sorted(rule_hit_counts.items(), key=lambda kv: -kv[1]):
+        rule_hits.append(
+            {
+                "rule_id": rid,
+                "name": rule_names.get(rid),
+                "weight": rule_weights.get(rid),
+                "hit_count": cnt,
+            }
+        )
+    for r in rules:
+        rid = str(r.get("id"))
+        if rid not in seen_rules:
+            rule_hits.append(
+                {"rule_id": rid, "name": r.get("name"), "weight": r.get("weight"), "hit_count": 0}
+            )
+
+    top_firing = rule_hits[0] if rule_hits and int(rule_hits[0].get("hit_count") or 0) > 0 else None
+
+    poster_stats: Dict[str, Dict[str, Any]] = {}
+    for j in high:
+        by = str(j.get("created_by") or "unknown")
+        if by not in poster_stats:
+            poster_stats[by] = {"created_by": by, "high_risk_count": 0, "high_risk_amount": 0.0}
+        poster_stats[by]["high_risk_count"] += 1
+        poster_stats[by]["high_risk_amount"] += float(j.get("total_amount") or 0.0)
+    top_posters = sorted(poster_stats.values(), key=lambda x: -float(x.get("high_risk_amount") or 0.0))[:5]
+
+    manual = [j for j in scored if j.get("is_manual")]
+    backdated = [j for j in scored if int(j.get("backdated_days") or 0) >= 10]
+    missing_appr = [j for j in scored if j.get("is_manual") and j.get("approver_email") in (None, "", [])]
+    privileged = [j for j in scored if j.get("is_privileged_poster")]
+    unreviewed_high = sum(1 for j in high if str(j.get("id") or "") not in reviewed_ids)
+
+    scanned = len(scored)
+    pct_high = round(100.0 * len(high) / scanned, 1) if scanned else 0.0
+
+    return {
+        "kpis": {
+            "total_journals": total,
+            "scanned": scanned,
+            "active_rules": len(rules),
+            "high_count": len(high),
+            "medium_count": len(medium),
+            "low_count": len(low),
+            "pct_high": pct_high,
+            "high_risk_amount": round(sum(float(j.get("total_amount") or 0.0) for j in high), 2),
+            "medium_risk_amount": round(sum(float(j.get("total_amount") or 0.0) for j in medium), 2),
+            "manual_count": len(manual),
+            "manual_amount": round(sum(float(j.get("total_amount") or 0.0) for j in manual), 2),
+            "unreviewed_high_count": unreviewed_high,
+            "backdated_count": len(backdated),
+            "missing_approver_count": len(missing_appr),
+            "privileged_poster_count": len(privileged),
+            "avg_risk_score": round(sum(scores) / len(scores), 1) if scores else 0.0,
+            "max_risk_score": max(scores) if scores else 0,
+            "top_rule_id": top_firing.get("rule_id") if top_firing else None,
+            "top_rule_hits": int(top_firing.get("hit_count") or 0) if top_firing else 0,
+        },
+        "rule_hits": rule_hits,
+        "top_posters": top_posters,
+        "bands": {"high": len(high), "medium": len(medium), "low": len(low)},
+    }
+
+
 @router.get("")
 async def journals_list(
     entity_code: Optional[str] = Query(None),
@@ -119,16 +268,15 @@ async def journals_list(
     current=Depends(get_current_user),
 ):
     entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
-    q: Dict[str, Any] = {}
-    if entity_code:
-        q["entity"] = entity_code
+    q = _journal_query(entity_code, None)
     if is_manual is not None:
         q["is_manual"] = is_manual
     cur = db.journals.find(q, {"_id": 0}).sort("posting_date", -1).skip(offset).limit(limit)
     items = [j async for j in cur]
     total = await db.journals.count_documents(q)
     rules = await _get_rules()
-    scored = [{**j, **_score_je(j, rules)} for j in items]
+    reviewed_ids = await _reviewed_je_ids([str(j.get("id")) for j in items if j.get("id")])
+    scored = [_enrich_scored_row(_scored_journal(j, rules), reviewed_ids) for j in items]
     return {"items": scored, "total": total, "limit": limit, "offset": offset, "as_of": as_of_now()}
 
 
@@ -148,6 +296,31 @@ async def journal_risk_rules(current=Depends(get_current_user)):
     return {"items": rules, "count": len(rules), "as_of": as_of_now()}
 
 
+@router.get("/risk-summary")
+async def journals_risk_summary(
+    entity_code: Optional[str] = Query(None),
+    period_ym: Optional[str] = Query(None),
+    scan_limit: int = Query(2000, ge=1, le=5000),
+    current=Depends(get_current_user),
+):
+    """Aggregated journal risk KPIs, rule hit counts, and top posters for the workbench."""
+    entity_code = await enforce_entity_scope(db, current=current, requested_entity_code=entity_code)
+    scored, total, rules = await _fetch_scored_journals(
+        entity_code=entity_code,
+        period_ym=period_ym,
+        scan_limit=scan_limit,
+    )
+    reviewed_ids = await _reviewed_je_ids([str(j.get("id")) for j in scored if j.get("id")])
+    summary = _build_risk_summary(scored, total, rules, reviewed_ids)
+    return {
+        **summary,
+        "entity_code": entity_code,
+        "period_ym": period_ym,
+        "scan_limit": scan_limit,
+        "as_of": as_of_now(),
+    }
+
+
 @router.post("/risk-rules")
 async def journal_risk_rules_upsert(body: Dict[str, Any], current=Depends(get_current_user)):
     rid = body.get("id") or f"JR-{__import__('uuid').uuid4().hex[:6].upper()}"
@@ -165,7 +338,7 @@ async def journal_detail(je_id: str, current=Depends(get_current_user)):
     if doc.get("entity"):
         await enforce_entity_scope(db, current=current, requested_entity_code=doc.get("entity"))
     rules = await _get_rules()
-    return {**doc, **_score_je(doc, rules), "as_of": as_of_now()}
+    return {**_scored_journal(doc, rules), "as_of": as_of_now()}
 
 
 @router.post("/{je_id}/review")

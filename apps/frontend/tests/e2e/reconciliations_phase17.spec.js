@@ -23,7 +23,9 @@ test.describe("Phase 17 — Reconciliations suite (PR-57)", () => {
     await expect(page).toHaveURL(/\/app\/financial-audit\/reconciliations-dashboard\/?(?=\?|#|$)/);
     await expect(page.getByTestId("recon-workbench-page")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('[data-testid="recon-workbench-page"][data-reconciliation-suite-surface="true"]')).toBeVisible();
+    await expect(page.getByTestId("recon-kpi-strip")).toBeVisible();
     await expect(page.getByTestId("recon-kpi-total")).toBeVisible();
+    await expect(page.getByTestId("recon-kpi-overdue")).toBeVisible();
     await expect(page.getByTestId("recon-list-table")).toBeVisible();
   });
 
@@ -33,5 +35,8 @@ test.describe("Phase 17 — Reconciliations suite (PR-57)", () => {
     await expect(page.getByTestId("recon-workbench-page")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator('[data-testid="recon-workbench-page"][data-reconciliation-suite-surface="true"]')).toBeVisible();
     await expect(page.getByTestId("recon-kpi-open")).toBeVisible();
+    await expect(page.getByTestId("recon-status-chips")).toBeVisible();
+    await expect(page.getByTestId("recon-kpi-escalated")).toBeVisible();
+    await expect(page.getByTestId("recon-kpi-avg-approve-days")).toBeVisible();
   });
 });

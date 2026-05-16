@@ -34,6 +34,18 @@
 - **`app/services/worm_service.py`**: WORM records; `require_case_mutable` for closed cases.
 - **Routers**: `rollups_router`, `retention_router`, `legal_holds_router` (mounted in `app/main.py`).
 
+## CFO Action Queue (Phase 5)
+
+- **Router**: `app/routers/cfo_router.py` — list, detail, summary, dashboard, trends, export (CSV/XLSX), approve/reject/escalate/reopen/comment, bulk actions.
+- **Services**: `action_queue_service.py` (materialization, keyset cursor pagination, SLA flags, XLSX export), `action_queue_analytics_service.py` (summary, trends, ops linkage, priority-by-type stack, approver bottleneck, readiness correlation), `action_queue_rate_limit.py`.
+- **RBAC** (via `require_roles`):
+  - **List / detail / summary / dashboard / trends / comment**: `CFO`, `Controller`, `Internal Auditor`, `Super Admin`
+  - **Approve / reject / escalate / reopen / bulk / export**: `CFO`, `Controller`, `Super Admin`
+- **Rate limits** (env-tunable in `action_queue_rate_limit.py`): refresh, bulk, export per user/IP window.
+- **Scheduled jobs** (`lifecycle.py`): daily analytics snapshot; hourly P0 queue scan (`notifier.scan_p0_action_queue`).
+- **Frontend**: `/app/cfo-action-queue` — filters, virtualized list, cursor load-more, deep links `?priority=&action_type=&action_id=`.
+- **Tests**: `tests/test_action_queue_analytics.py` (unit); `tests/test_phase5_cfo_action_queue_l4_http.py` (HTTP, needs `REACT_APP_BACKEND_URL`).
+
 ## Testing
 
 - `tests/test_core_*.py` and `test_case_service.py` run without a live server (no Mongo required for pure unit tests).

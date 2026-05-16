@@ -10,8 +10,8 @@ Legend: [x] done, [~] partial / scaffolded, [ ] not started.
 
 - [x] Organizational hierarchy + `entity_group_map` + FX rates baseline
 - [x] Rollup metrics + drilldown + snapshots + `/rollups/*` APIs
-- [~] Full drill path “BU” as distinct level (process used as proxy)
-- [~] Currency conversion on rolled-up exposure (rates present; conversion not applied)
+- [~] Full drill path “BU” as distinct level (no separate BU master yet; **process = BU proxy**, documented in API `drill_path`)
+- [x] Currency conversion on rolled-up exposure (functional currency per entity + optional `exposure_currency` on exceptions; `reporting_currency_rates` USD base)
 - [x] Retention policies + eligible scan + purge job (dry-run + limited live delete)
 - [x] Legal holds + links + release + attach APIs
 - [x] WORM records + closed-case immutability + override audit
@@ -28,7 +28,7 @@ Legend: [x] done, [~] partial / scaffolded, [ ] not started.
 
 ## Global backlog (from master spec)
 
-- [~] Multi-entity rollups (implemented core; extend BU + FX on exposure as needed)
+- [~] Multi-entity rollups (implemented core + **FX on exposure**; extend BU master when hierarchy grows)
 - [~] Retention engine (policies + job; case/audit purge out-of-band by design)
 - [x] Legal hold enforcement (API + purge skip + UI flags)
 - [x] WORM for closed cases / evidence (with override path)
@@ -37,7 +37,7 @@ Legend: [x] done, [~] partial / scaffolded, [ ] not started.
 - [ ] Semantic copilot retrieval upgrade
 - [ ] Governance hardening (approval workflows beyond WORM override)
 - [ ] Data trust (ingestion health, schema validation, lineage) — partial overlap with Child 3
-- [ ] Mobile CFO cockpit
+- [x] Mobile CFO cockpit
 
 ## Documentation
 

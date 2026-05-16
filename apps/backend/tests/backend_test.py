@@ -142,6 +142,8 @@ class TestDashboards:
         data = r.json()
         assert "controls" in data and len(data["controls"]) >= 12
         assert "recent_runs" in data
+        assert "summary" in data and "trends" in data
+        assert "audit_readiness_pct" in data["summary"]
 
     def test_audit_scoped_entity(self, cfo_headers):
         """Phase 6–7 — dashboard/audit echoes master filters; recent_runs respect entity via ``entities``."""
@@ -742,6 +744,36 @@ class TestPhase3KpiEndpoints:
         d = r.json()
         assert d.get("kpi_id") == "unresolved_high_risk_exposure"
         assert isinstance(d.get("refs"), list)
+
+    def test_kpi_audit_readiness_drill_detail(self, cfo_headers):
+        r = requests.get(f"{API}/kpi/drilldown/audit_readiness_pct", headers=cfo_headers, timeout=60)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d.get("kpi_id") == "audit_readiness_pct"
+        detail = d.get("detail") or {}
+        summary = detail.get("summary") or {}
+        assert summary.get("current") is not None
+        assert isinstance(detail.get("heatmap"), list)
+        assert isinstance(detail.get("distribution"), list)
+        assert isinstance(detail.get("correlated_kpis"), list)
+
+    def test_kpi_audit_readiness_trend_multi(self, cfo_headers):
+        r = requests.get(f"{API}/kpi/trend/audit_readiness_pct", headers=cfo_headers, timeout=60)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d.get("kpi_id") == "audit_readiness_pct"
+        assert "trend_source" in d
+        assert isinstance(d.get("series"), list)
+
+    def test_kpi_audit_readiness_export_csv(self, cfo_headers):
+        r = requests.get(
+            f"{API}/kpi/drilldown/audit_readiness_pct/export",
+            headers=cfo_headers,
+            timeout=60,
+        )
+        assert r.status_code == 200, r.text
+        assert "text/csv" in (r.headers.get("content-type") or "")
+        assert b"Audit readiness export" in r.content
 
 
 # --------------- Slice 3 — CFO action queue ---------------

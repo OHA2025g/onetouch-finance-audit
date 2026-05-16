@@ -144,6 +144,12 @@ class TestMonthEndCloseContracts:
         assert "score" in j3
         assert j3.get("cycle_id") == latest_id
 
+        rev = requests.get(f"{API}/close/cycles/{cycle_id}/events", headers=_h(tokens["controller"]), timeout=30)
+        assert rev.status_code == 200, rev.text
+        evl = rev.json()
+        assert isinstance(evl, list)
+        assert any(e.get("type") == "cycle_created" for e in evl), "expected cycle_created in timeline"
+
         # Override without adequate reason must fail
         r_short = requests.post(
             f"{API}/close/signoff",

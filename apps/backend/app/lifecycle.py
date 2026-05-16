@@ -10,7 +10,12 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.auth import hash_password
 from app.controls_engine import run_all_controls, run_control
 from app.deps import client, db, logger, iso
-from app.notifier import get_settings as get_notif_settings, scan_sla_breaches, send_daily_brief
+from app.notifier import (
+    get_settings as get_notif_settings,
+    scan_p0_action_queue,
+    scan_sla_breaches,
+    send_daily_brief,
+)
 from app.phase2 import seed_phase2
 from app.seed import seed_database
 from app.ca_audit_seed import repair_demo_audit_engagement_entity_codes, seed_ca_audit_if_empty
@@ -204,14 +209,39 @@ async def on_startup() -> None:
         async def _brief_job() -> None:
             await send_daily_brief(db)
 
+        async def _aq_snapshot_job() -> None:
+            from app.services.action_queue_analytics_service import record_snapshot
+
+            entity_codes: list = [None]
+            try:
+                async for ent in db.entities.find({}, {"_id": 0, "code": 1}).limit(25):
+                    code = ent.get("code")
+                    if code and code not in entity_codes:
+                        entity_codes.append(code)
+            except Exception:
+                pass
+            for entity_code in entity_codes:
+                try:
+                    await record_snapshot(db, entity_code=entity_code)
+                except Exception as exc:
+                    logger.warning("Action queue snapshot failed for %s: %s", entity_code, exc)
+
+        async def _p0_queue_job() -> None:
+            await scan_p0_action_queue(db)
+
         sched = AsyncIOScheduler()
         sched.add_job(_sla_job, "interval", minutes=5, id="sla_scan", replace_existing=True)
+        sched.add_job(_aq_snapshot_job, "cron", hour=6, minute=15, id="aq_snapshot", replace_existing=True)
+        sched.add_job(_p0_queue_job, "interval", hours=1, id="p0_action_queue", replace_existing=True)
         settings = await get_notif_settings(db)
         hour = int(settings.get("daily_brief_hour_utc", 8))
         sched.add_job(_brief_job, "cron", hour=hour, minute=0, id="daily_brief", replace_existing=True)
         sched.start()
         scheduler = sched
-        logger.info("Scheduler started: SLA every 5 min + Daily CFO brief at %02d:00 UTC", hour)
+        logger.info(
+            "Scheduler started: SLA 5m, AQ snapshot 06:15 UTC, P0 queue hourly, brief %02d:00 UTC",
+            hour,
+        )
     except Exception as e:  # noqa: BLE001
         logger.warning("Scheduler start failed: %s", e)
 

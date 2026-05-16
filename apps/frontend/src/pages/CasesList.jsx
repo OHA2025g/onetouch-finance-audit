@@ -78,14 +78,16 @@ export default function CasesList() {
         severity: e.severity,
         priority: e.severity === "critical" ? "P1" : e.severity === "high" ? "P2" : "P3",
         status: "open",
-        owner_email: "—",
-        owner_name: "—",
+        owner_email: "",
+        owner_name: "",
         financial_exposure: e.financial_exposure,
         entity: e.entity,
         process: e.process,
         detected_at: e.detected_at,
         opened_at: e.detected_at,
         due_date: e.detected_at,
+        department_id: e.department_id || e.dept_id,
+        cost_center_id: e.cost_center_id || e.cc_id,
         is_shadow: true,
       }));
       setAll([...cases.data, ...shadow]);
@@ -229,7 +231,9 @@ export default function CasesList() {
                       <StatusBadge status={c.status} />
                     )}
                   </DataTableTd>
-                  <DataTableTd className="truncate text-xs text-zinc-800 dark:text-zinc-200">{c.owner_name || c.owner_email}</DataTableTd>
+                  <DataTableTd className="truncate text-xs text-zinc-800 dark:text-zinc-200">
+                    {c.is_shadow ? "Unassigned" : (c.owner_name || c.owner_email || "—")}
+                  </DataTableTd>
                   <DataTableTd className="crt-num max-w-[9rem] text-[10px] leading-tight text-zinc-600 dark:text-zinc-400">
                     {c.department_id || c.cost_center_id ? (
                       <>

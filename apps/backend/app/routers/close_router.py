@@ -60,6 +60,12 @@ async def get_cycle(cycle_id: str, current=Depends(require_roles("CFO", "Control
     return out
 
 
+@router.get("/cycles/{cycle_id}/events")
+async def list_cycle_events_route(cycle_id: str, current=Depends(require_roles("CFO", "Controller", "Super Admin"))):
+    await _require_close_cycle_scope(current, cycle_id)
+    return await cs.list_cycle_events(db, cycle_id)
+
+
 @router.get("/tasks")
 async def list_tasks(
     cycle_id: Optional[str] = Query(None),

@@ -86,6 +86,18 @@ class TestDrill:
         assert isinstance(d.get("access_events"), list)
         assert len(d["access_events"]) >= 1
 
+    def test_drill_user_system_merges_service_aliases(self, tokens):
+        """Short handle ``system`` must resolve like system@onetouch.ai (cases, journals, identity)."""
+        r = requests.get(f"{BASE_URL}/api/drill/user/system", headers=_h(tokens["cfo"]), timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d.get("type") == "user"
+        assert d["primary"].get("email") == "system@onetouch.ai"
+        assert "automation" in (d["primary"].get("full_name") or "").lower() or d["primary"].get("role") == "Service account"
+        assert d["primary"].get("status") == "active"
+        for k in ("roles", "access_events", "cases", "journals_posted", "audit_log"):
+            assert k in d and isinstance(d[k], list)
+
     def test_drill_control_C_AP_001(self, tokens):
         r = requests.get(f"{BASE_URL}/api/drill/control/C-AP-001", headers=_h(tokens["cfo"]), timeout=15)
         assert r.status_code == 200, r.text

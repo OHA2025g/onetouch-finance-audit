@@ -6,7 +6,7 @@ from app.auth import get_current_user
 from app.deps import db, audit_log
 from app.services.rbac_service import enforce_entity_scope
 from app.models import ControlOut, ExceptionOut
-from app.controls_engine import run_control, run_all_controls
+from app.controls_engine import normalize_exception_for_api, run_control, run_all_controls
 from app.analytics import _scope_exceptions
 
 router = APIRouter(tags=["controls"])
@@ -109,6 +109,9 @@ async def controls_run_all(current=Depends(get_current_user)):
     if current["role"] == "External Auditor":
         raise HTTPException(403, "Read-only auditor role cannot execute controls")
     result = await run_all_controls(db)
+    from app.services.cfo_command_center_service import clear_all_cache
+
+    clear_all_cache()
     await audit_log(current["email"], "run_all_controls", "controls", "all",
                     {"total_exceptions": result["total_exceptions"]})
     return result
@@ -144,7 +147,10 @@ async def exceptions_list(
     cur = db.exceptions.find(ex_q, {"_id": 0}).sort(
         [("financial_exposure", -1), ("id", 1)]
     ).skip(offset).limit(limit)
-    return [e async for e in cur]
+    out: List[Dict[str, Any]] = []
+    async for e in cur:
+        out.append(normalize_exception_for_api(dict(e)))
+    return out
 
 
 @router.get("/exceptions/count")
@@ -185,4 +191,4 @@ async def exception_detail(exception_id: str, current=Depends(get_current_user))
     if e.get("entity"):
         await enforce_entity_scope(db, current=current, requested_entity_code=e.get("entity"))
     case = await db.cases.find_one({"exception_id": exception_id}, {"_id": 0})
-    return {"exception": e, "case": case}
+    return {"exception": normalize_exception_for_api(e), "case": case}

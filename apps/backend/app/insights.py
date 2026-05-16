@@ -152,9 +152,13 @@ async def _snapshot_controller(db, scope: Optional[Dict[str, Any]] = None) -> Di
         department_id=scope.get("department_id"),
         cost_center_id=scope.get("cost_center_id"),
     ))
-    rq = _reconciliation_scope(scope.get("entity_code"), scope.get("period_ym"))
-    recon_over = await db.reconciliations.count_documents({**rq, "status": "overdue"})
-    recon_total = await db.reconciliations.count_documents(rq if rq else {})
+    from app.services import reconciliation_metrics as _rm
+
+    recon_over, recon_total = await _rm.count_overdue_reconciliations(
+        db,
+        entity_code=scope.get("entity_code"),
+        period_ym=scope.get("period_ym"),
+    )
     fx = [e async for e in db.exceptions.find(
         _scope_exceptions(
             {"control_code": "C-TR-003", "status": {"$ne": "closed"}},

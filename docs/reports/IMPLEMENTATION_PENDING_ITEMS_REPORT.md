@@ -80,8 +80,8 @@ This document tracks the enterprise hardening program and the modularization eff
 
 ### Known limitations
 
-- No separate **business_unit** collection; drill at process level uses existing `cases.process`.
-- **Currency conversion** on exposure is not applied in rollup metrics (rates stored for future use).
+- No separate **business_unit** collection; drill at process level uses existing `cases.process`. Rollup API responses include **`drill_path`** metadata describing this BU proxy.
+- **Reporting currency** for exposure metrics is **USD**; amounts are converted from exception currency / entity functional currency using **`reporting_currency_rates`** (USD base) with safe fallbacks.
 - **Global legal hold** blocks retention broadly by design when any active global hold exists.
 
 ---
